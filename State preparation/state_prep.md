@@ -19,6 +19,11 @@ Figure our the Schmidt decomposition and the general unitary transformation, try
 General unitiray transformation circuit synthesis and optimization:
 
 https://ieeexplore.ieee.org/document/1629135/ #2006 OG
+
+Notes:
+Ry and Rz multiplexors are just folded multicontrolled Ry and Rz gates with Gray code decomposition. 
+Try if replacing CNOTs with CZs in the multiplexed Ry in the general unitary synthesis works.
+
 https://ieeexplore.ieee.org/document/9743148
 https://ieeexplore.ieee.org/stamp/stamp.jsp?tp=&arnumber=10025533
 https://ieeexplore.ieee.org/stamp/stamp.jsp?tp=&arnumber=10626814&tag=1
