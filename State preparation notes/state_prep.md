@@ -12,7 +12,7 @@ https://journals.aps.org/pra/pdf/10.1103/PhysRevA.77.032320
 Look into those, try to implement
 
 Knill isometry state prep:
-https://journals.aps.org/pra/pdf/10.1103/PhysRevA.83.032302
+https://arxiv.org/abs/1003.5760
 
 Figure our the Schmidt decomposition and the general unitary transformation, try to implement
 
@@ -23,6 +23,8 @@ https://ieeexplore.ieee.org/document/1629135/ #2006 OG
 Notes:
 Ry and Rz multiplexors are just folded multicontrolled Ry and Rz gates with Gray code decomposition. 
 Try if replacing CNOTs with CZs in the multiplexed Ry in the general unitary synthesis works.
+
+Qiskit unitary synthesis already uses the QSD from the paper.
 
 https://ieeexplore.ieee.org/document/9743148
 https://ieeexplore.ieee.org/stamp/stamp.jsp?tp=&arnumber=10025533
