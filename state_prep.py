@@ -10,6 +10,7 @@ import time
 from sklearn.model_selection import train_test_split
 # from sklearn.preprocessing import normalize
 from scipy.linalg import cossin
+from scipy.linalg import matmul_toeplitz
 from qiskit import QuantumCircuit, QuantumRegister, AncillaRegister
 from qiskit.compiler import transpile
 from qiskit.quantum_info import Statevector
@@ -25,16 +26,49 @@ np.set_printoptions(threshold=sys.maxsize)
 arr = normalize(np.array([2 * x - 1 for x in np.random.random_sample(2 ** 5)]))
 # arr = normalize(np.array([x  for x in range(2 ** 4)]))
 
-arr = np.array([-1.56543837e-01, -3.08838235e-01,  2.85190674e-01 ,-1.20806053e-01,
-  2.84993658e-02 ,-1.90403154e-01, -2.42676345e-01, -2.72982189e-01,
- -1.07331674e-01, -9.28381047e-02 , 4.66242485e-02 , 2.96832832e-01,
- -1.57154902e-02 ,-3.75615784e-02, -1.61318717e-01 , 1.45130168e-01,
- -2.20590318e-01 , 2.04184376e-01 , 1.85423402e-01 ,-1.00883425e-04,
- -3.51420954e-02, -1.05797101e-01 , 1.05742709e-01, -1.85286012e-01,
-  1.37244458e-01,  1.24560252e-01 , 1.85222125e-01 , 2.05486102e-02,
-  2.98305018e-01 , 1.88803213e-01 ,-2.79149453e-01,  1.51738596e-02])
+# arr = np.array([-1.56543837e-01, -3.08838235e-01,  2.85190674e-01 ,-1.20806053e-01,
+#   2.84993658e-02 ,-1.90403154e-01, -2.42676345e-01, -2.72982189e-01,
+#  -1.07331674e-01, -9.28381047e-02 , 4.66242485e-02 , 2.96832832e-01,
+#  -1.57154902e-02 ,-3.75615784e-02, -1.61318717e-01 , 1.45130168e-01,
+#  -2.20590318e-01 , 2.04184376e-01 , 1.85423402e-01 ,-1.00883425e-04,
+#  -3.51420954e-02, -1.05797101e-01 , 1.05742709e-01, -1.85286012e-01,
+#   1.37244458e-01,  1.24560252e-01 , 1.85222125e-01 , 2.05486102e-02,
+#   2.98305018e-01 , 1.88803213e-01 ,-2.79149453e-01,  1.51738596e-02])
 
 # print(arr)
+
+def solve_thetas(lambdas, U):
+
+    lambdas = np.ones(4)
+    y_s = np.asarray(np.asmatrix(U) * np.asmatrix(lambdas).T).flatten()
+
+    print(y_s)
+
+    def solve_x(a, b, y):
+        print(a, b, y)
+        first = 4*np.atan((b - np.sqrt(a ** 2 + b ** 2 - y ** 2)) / (a + y))
+        second = 4*np.atan((np.sqrt(a ** 2 + b ** 2 - y ** 2) + b) / (a + y))
+        return (first, second)
+    
+    def evaluate(a, b, theta):
+        return a*np.cos(theta / 2) + b*np.sin(theta / 2)
+
+
+    zero_first, zero_second = solve_x(lambdas[0], -lambdas[2], float(y_s[0]))
+    one_first, one_second = solve_x(lambdas[1], -lambdas[3], float(y_s[1]))
+    exit()
+    two_first, two_second = solve_x(evaluate(lambdas[2], lambdas[0], zero_first), -evaluate(lambdas[3], lambdas[1], one_first), y_s[2])
+    # print(y_s)
+    theta_0 = evaluate(lambdas[0], -lambdas[2], zero_first)
+    theta_1 = evaluate(lambdas[1], -lambdas[3], one_first)
+    theta_2 = evaluate(evaluate(lambdas[2], lambdas[0], zero_first), -evaluate(lambdas[3], lambdas[1], one_first), two_second)
+    theta_3 = evaluate(evaluate(lambdas[3], lambdas[1], one_first), evaluate(lambdas[2], lambdas[0], one_first), two_second)
+          
+    print(theta_0, theta_1, theta_2, theta_3)
+    print(zero_first, one_first, two_second)
+    exit()
+
+    return (zero_first.tolist()[0][0], one_first.tolist()[0][0], two_second.tolist()[0][0])
 
 def prepare_state(data):
     qubit_count = int(np.log2(len(data)))
@@ -49,8 +83,11 @@ def prepare_state(data):
     U, S, V = np.linalg.svd(mat_A)
     V_t = V.transpose()
 
-    print(U)
-    print(V_t)
+    (theta_1, theta_2, theta_3) = solve_thetas(S, V_t)
+
+    # print(S)
+    # print(U)
+    # print(V_t)
 
     qc.prepare_state(S, upper_circ)
 
@@ -61,20 +98,26 @@ def prepare_state(data):
     U_gate = UnitaryGate(U)
     V_gate = UnitaryGate(V_t)
 
-    qc.append(V_gate, upper_circ)
+    # qc.append(V_gate, upper_circ)
     qc.append(U_gate, lower_circ)
+
+    qc.x(upper_circ[0])
+    qc.cry(theta_1, upper_circ[0], upper_circ[1])
+    qc.x(upper_circ[0])
+    qc.cry(theta_2, upper_circ[0], upper_circ[1])
+    qc.cry(theta_3, upper_circ[1], upper_circ[0])
 
     # qc_opt = transpile(qc, basis_gates=['cx', 'h', 'x', 'rz', 'rx', 'x', 'ry'], optimization_level=0)
     # print(qc_opt)
     # state_vec = Statevector(qc_opt)
 
-    # print(qc)
-    # state_vec = Statevector(qc)
+    print(qc)
+    state_vec = Statevector(qc)
     
-    # print(state_vec)
+    print(state_vec)
 
 
-# prepare_state(arr)
+prepare_state(arr)
 
 U = [[ 0.62923587, -0.27810894,  0.06225542 , 0.32819821,  0.21411186, -0.26067223,
   -0.16945149 , 0.52213037],
@@ -100,9 +143,9 @@ V_t = [[-0.54409413, -0.10171701, -0.25889078,  0.79157488],
 
 u, cs, vdh = cossin(V_t, p=2, q=2)
 
-print(u)
-print(cs)
-print(vdh)
+# print(u)
+# print(cs)
+# print(vdh)
 # print("QISKIT ///////////////////////////////////")
 # qiskit_circ = QuantumCircuit(4)
 # qiskit_circ.initialize(arr)
