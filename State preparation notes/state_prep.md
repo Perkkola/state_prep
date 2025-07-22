@@ -31,3 +31,7 @@ https://ieeexplore.ieee.org/stamp/stamp.jsp?tp=&arnumber=10025533
 https://ieeexplore.ieee.org/stamp/stamp.jsp?tp=&arnumber=10626814&tag=1
 https://ieeexplore.ieee.org/stamp/stamp.jsp?tp=&arnumber=10528701
 https://ieeexplore.ieee.org/stamp/stamp.jsp?tp=&arnumber=10313871
+
+KAK1:
+
+https://arxiv.org/abs/quant-ph/0507171
