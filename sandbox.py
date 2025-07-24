@@ -1,0 +1,64 @@
+from sympy import *
+from sympy.physics.quantum import TensorProduct
+import numpy as np
+from functools import reduce
+
+variables_indices = [x for x in range(1, 16)]
+variables_string = reduce(lambda x, y: f"{x} " + f"x_{y}", variables_indices, f"x_0")
+variables_symbols = symbols(variables_string)
+variables_symbols_matrix = np.array(list(variables_symbols)).reshape((4, 4)).T
+tensorproduct
+A = Matrix(variables_symbols_matrix)
+I = Matrix(np.eye(2))
+
+U = TensorProduct(I, A)
+
+U_O = Matrix([[ 0.62923587, -0.27810894,  0.06225542,  0.32819821,  0.21411186, -0.26067223, -0.16945149 , 0.52213037],
+ [-0.12832786, -0.72115181,  0.06330487, -0.25546329,  0.1811286 , -0.15270451,  0.58015675, -0.03866454],
+ [ 0.14146621,  0.33503048,  0.63506461,  0.14609694, -0.17964295,  0.2131513 ,  0.56863418,  0.20503807],
+ [-0.16206701,  0.04719766,  0.46284018, -0.12025008,  0.7869089 ,  0.20527736, -0.27689368, -0.06921729],
+ [ 0.25624259,  0.38011453, -0.34262361, -0.67547194,  0.23405039,  0.00414033,  0.21956521,  0.33644285],
+ [ 0.23268996, -0.28038369, -0.23106108,  0.05510674, -0.02434206,  0.89985678, -0.00166854,  0.02183679],
+ [ 0.0135536 ,  0.25475662, -0.4235493 ,  0.54214077,  0.46218213, -0.0468658 ,  0.43173278, -0.24372693],
+ [-0.64909721, -0.01092904, -0.15625139,  0.19494701,  0.02944304,  0.09593373,  0.0091941 ,  0.71132259]])
+
+
+v = Matrix([1, 0, 0, 0, 0, 0, 0, 0])
+
+equations_matrix = U * U_O
+
+eqs_1 = list(equations_matrix.col(0) - v)
+eqs_2 = [A.row(x).norm() ** 2 - 1 for x in range(4)]
+eqs_3 = [A.col(x).norm() ** 2 - 1 for x in range(4)]
+eqs_1.extend(eqs_2)
+eqs_1.extend(eqs_3)
+
+
+
+
+solutions = nonlinsolve(eqs_1, variables_symbols)
+
+# print(solutions)
+
+# I_4 = Matrix(np.eye(4))
+
+first_solutions_matrix = Matrix(np.array(list(solutions)).reshape(4, 4).T)
+U_2 = TensorProduct(I, first_solutions_matrix)
+
+solution_matrix = U_2 * U_O
+
+print(np.array(solution_matrix))
+
+# print("Col norm")
+# print(np.array(simplify(solution_matrix.col(0).norm() ** 2)))
+# print("Row norm")
+# print(np.array(simplify(solution_matrix.row(0).norm() ** 2)))
+
+
+# Solve for unitarity ##################################
+
+# first_solutions_matrix_transpose = Matrix(np.array(list(solutions)).reshape(4, 4))
+# solutions_matrix_equations = first_solutions_matrix * first_solutions_matrix_transpose - I_4
+# solutions_matrix_equations_system = list(solutions_matrix_equations)
+
+# solutions_2 = nonlinsolve(solutions_matrix_equations_system, tuple(solutions.free_symbols))
