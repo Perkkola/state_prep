@@ -3,15 +3,45 @@ from sympy.physics.quantum import TensorProduct
 import numpy as np
 from functools import reduce
 
-variables_indices = [x for x in range(1, 16)]
-variables_string = reduce(lambda x, y: f"{x} " + f"x_{y}", variables_indices, f"x_0")
-variables_symbols = symbols(variables_string)
-variables_symbols_matrix = np.array(list(variables_symbols)).reshape((4, 4)).T
-tensorproduct
-A = Matrix(variables_symbols_matrix)
+
+# A = MatrixSymbol('A', 4, 4).as_explicit()
+# B = MatrixSymbol('B', 4, 4).as_explicit()
+# U_A = Matrix(TensorProduct(I, A))
+# U_B = Matrix(TensorProduct(B, I))
+
+
+
 I = Matrix(np.eye(2))
 
-U = TensorProduct(I, A)
+variables_indices = [x for x in range(1, 16)]
+
+variables_string_A = reduce(lambda x, y: f"{x} " + f"a_{y}", variables_indices, f"a_0")
+variables_symbols_A = symbols(variables_string_A)
+variables_symbols_matrix_A = np.array(list(variables_symbols_A)).reshape((4, 4))
+
+A = Matrix(variables_symbols_matrix_A)
+U_A = Matrix(TensorProduct(I, A))
+
+variables_string_B = reduce(lambda x, y: f"{x} " + f"b_{y}", variables_indices, f"b_0")
+variables_symbols_B = symbols(variables_string_B)
+variables_symbols_matrix_B = np.array(list(variables_symbols_B)).reshape((4, 4))
+
+B = Matrix(variables_symbols_matrix_B)
+U_B = Matrix(TensorProduct(B, I))
+U_B_T = Matrix(TensorProduct(B, I)).transpose()
+
+
+symbols = list(variables_symbols_A)
+symbols.extend(list(variables_symbols_B))
+
+# print(variables_symbols_B)
+
+
+
+# matrix_symbols = A.free_symbols.copy()
+# matrix_symbols.update(B.free_symbols)
+# matrix_symbols = tuple(list(matrix_symbols))
+
 
 U_O = Matrix([[ 0.62923587, -0.27810894,  0.06225542,  0.32819821,  0.21411186, -0.26067223, -0.16945149 , 0.52213037],
  [-0.12832786, -0.72115181,  0.06330487, -0.25546329,  0.1811286 , -0.15270451,  0.58015675, -0.03866454],
@@ -24,31 +54,69 @@ U_O = Matrix([[ 0.62923587, -0.27810894,  0.06225542,  0.32819821,  0.21411186, 
 
 
 v = Matrix([1, 0, 0, 0, 0, 0, 0, 0])
+v_2 = Matrix([0, 1, 0, 0, 0, 0, 0, 0])
 
-equations_matrix = U * U_O
+
+I_8 = Matrix(np.eye(8))
+
+equations_matrix = U_B * U_A * U_O
 
 eqs_1 = list(equations_matrix.col(0) - v)
-eqs_2 = [A.row(x).norm() ** 2 - 1 for x in range(4)]
-eqs_3 = [A.col(x).norm() ** 2 - 1 for x in range(4)]
+eqs_2 = list(equations_matrix.row(0) - v.transpose())
+eqs_3 = list(equations_matrix.col(1) - v_2)
+eqs_4 = list(equations_matrix.row(1) - v_2.transpose())
+
+
+# eqs_2 = list((equations_matrix.col(1) - v_2)[1:])
+# eqs_3 = list(equations_matrix.col(2)[3:6])
+# eqs_2 = [A.row(x).norm() ** 2 - 1 for x in range(4)]
+# eqs_3 = [A.col(x).norm() ** 2 - 1 for x in range(4)]
 eqs_1.extend(eqs_2)
 eqs_1.extend(eqs_3)
+eqs_1.extend(eqs_4)
+
+# pprint(eqs_3)
+# exit()
 
 
+solutions = nonlinsolve(eqs_1, symbols)
 
+print(solutions)
+# solutions_list = list(list(solutions)[0])
 
-solutions = nonlinsolve(eqs_1, variables_symbols)
+# exit()
+# solutions_list = list(solutions[0])
 
-# print(solutions)
+first_solutions_matrix_A = Matrix(np.array(solutions_list[:16]).reshape(4, 4))
+first_solutions_matrix_B = Matrix(np.array(solutions_list[16:]).reshape(4, 4))
+
+U_A = Matrix(TensorProduct(I, first_solutions_matrix_A))
+U_B = Matrix(TensorProduct(first_solutions_matrix_B, I))
+
+pprint(U_B * U_A * U_O)
+
+exit()
 
 # I_4 = Matrix(np.eye(4))
 
 first_solutions_matrix = Matrix(np.array(list(solutions)).reshape(4, 4).T)
+first_solutions_transpose = Matrix(np.array(list(solutions)).reshape(4, 4))
 U_2 = TensorProduct(I, first_solutions_matrix)
 
 solution_matrix = U_2 * U_O
 
-print(np.array(solution_matrix))
+print(np.array(first_solutions_matrix * first_solutions_transpose))
+# print(np.array(solution_matrix))
 
+# new_eqs_1 = [first_solutions_matrix.row(x).norm() ** 2 - 1 for x in range(4)]
+# new_eqs_2 = [first_solutions_matrix.col(x).norm() ** 2 - 1 for x in range(4)]
+
+# new_eqs_1.extend(new_eqs_2)
+
+
+# second_solutions = nonlinsolve(new_eqs_1, tuple(solutions.free_symbols))
+
+# print(second_solutions)
 # print("Col norm")
 # print(np.array(simplify(solution_matrix.col(0).norm() ** 2)))
 # print("Row norm")

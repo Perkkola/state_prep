@@ -35,3 +35,6 @@ https://ieeexplore.ieee.org/stamp/stamp.jsp?tp=&arnumber=10313871
 KAK1:
 
 https://arxiv.org/abs/quant-ph/0507171
+
+THREE QUBIT GATE FROM 6 TWO QUBITS GATES ETC:
+https://arxiv.org/abs/quant-ph/9503016
