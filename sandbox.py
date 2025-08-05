@@ -1,8 +1,103 @@
+import sys
 from sympy import *
 from sympy.physics.quantum import TensorProduct
 import numpy as np
+from scipy.linalg import cossin
 from functools import reduce
+np.set_printoptions(threshold=sys.maxsize, linewidth=sys.maxsize)
 
+U_O = Matrix([[ 0.62923587, -0.27810894,  0.06225542,  0.32819821,  0.21411186, -0.26067223, -0.16945149 , 0.52213037],
+ [-0.12832786, -0.72115181,  0.06330487, -0.25546329,  0.1811286 , -0.15270451,  0.58015675, -0.03866454],
+ [ 0.14146621,  0.33503048,  0.63506461,  0.14609694, -0.17964295,  0.2131513 ,  0.56863418,  0.20503807],
+ [-0.16206701,  0.04719766,  0.46284018, -0.12025008,  0.7869089 ,  0.20527736, -0.27689368, -0.06921729],
+ [ 0.25624259,  0.38011453, -0.34262361, -0.67547194,  0.23405039,  0.00414033,  0.21956521,  0.33644285],
+ [ 0.23268996, -0.28038369, -0.23106108,  0.05510674, -0.02434206,  0.89985678, -0.00166854,  0.02183679],
+ [ 0.0135536 ,  0.25475662, -0.4235493 ,  0.54214077,  0.46218213, -0.0468658 ,  0.43173278, -0.24372693],
+ [-0.64909721, -0.01092904, -0.15625139,  0.19494701,  0.02944304,  0.09593373,  0.0091941 ,  0.71132259]])
+
+U_O = np.array([[ 0.62923587, -0.27810894,  0.06225542,  0.32819821,  0.21411186, -0.26067223, -0.16945149 , 0.52213037],
+ [-0.12832786, -0.72115181,  0.06330487, -0.25546329,  0.1811286 , -0.15270451,  0.58015675, -0.03866454],
+ [ 0.14146621,  0.33503048,  0.63506461,  0.14609694, -0.17964295,  0.2131513 ,  0.56863418,  0.20503807],
+ [-0.16206701,  0.04719766,  0.46284018, -0.12025008,  0.7869089 ,  0.20527736, -0.27689368, -0.06921729],
+ [ 0.25624259,  0.38011453, -0.34262361, -0.67547194,  0.23405039,  0.00414033,  0.21956521,  0.33644285],
+ [ 0.23268996, -0.28038369, -0.23106108,  0.05510674, -0.02434206,  0.89985678, -0.00166854,  0.02183679],
+ [ 0.0135536 ,  0.25475662, -0.4235493 ,  0.54214077,  0.46218213, -0.0468658 ,  0.43173278, -0.24372693],
+ [-0.64909721, -0.01092904, -0.15625139,  0.19494701,  0.02944304,  0.09593373,  0.0091941 ,  0.71132259]])
+
+I = Matrix(np.eye(2))
+
+SWAP = Matrix([[1, 0, 0 ,0],
+               [0, 0, 1, 0],
+               [0, 1, 0, 0],
+               [0, 0, 0, 1]])
+
+SWAP_I = Matrix(TensorProduct(SWAP, I))
+I_SWAP = Matrix(TensorProduct(I, SWAP))
+
+B = Matrix([[-0.317886,    0.77150728 ,-0.34916656 , 0.42638917],
+ [-0.92321982, -0.17538743,  0.03804274 ,-0.33978988],
+ [ 0.05827144, -0.35261667, -0.93047666 ,-0.08049298],
+ [-0.20788961 ,-0.49967715 , 0.10415689,  0.83441956]])
+
+U_B = Matrix(TensorProduct(B, I))
+
+u, cs, vdh = cossin(U_O, p=4, q=4)
+
+
+pprint(cs)
+# pprint(I_SWAP * SWAP_I * U_B)
+
+exit()
+
+D = Matrix([[-0.10879391,  0.92573856,  0.22575803,  0.28320541],
+ [-0.46712325, -0.36110557,  0.33383209,  0.73481615],
+ [ 0.0516473 ,  0.07661026, -0.8781278,   0.46941985],
+ [ 0.87595223, -0.08210813,  0.25783913,  0.39935564]])
+
+E = Matrix([[-0.25808396,  0.49829752,  0.64749577,  0.51559818],
+ [ 0.41260466, -0.71647896,  0.40495968,  0.39041381],
+ [-0.72761409, -0.37660055, -0.35728501,  0.4484386 ],
+ [ 0.48345403,  0.31069198, -0.53768421,  0.61695899]])
+
+F = Matrix([[-0.41586284, -0.20381494,  0.75831726, -0.45877281],
+ [ 0.66241058,  0.31956589,  0.03995462, -0.67638265],
+ [ 0.16646391, -0.89197475, -0.31607373, -0.27707076],
+ [ 0.60046655, -0.24641053,  0.56873189,  0.50523837]])
+
+U_D = Matrix(TensorProduct(D, I))
+U_E = Matrix(TensorProduct(I, E))
+U_F = Matrix(TensorProduct(F, I))
+
+U_D_T = Matrix(TensorProduct(D, I)).C.transpose()
+U_E_T = Matrix(TensorProduct(I, E)).C.transpose()
+U_F_T = Matrix(TensorProduct(F, I)).C.transpose()
+
+big_B_T = (U_D_T * U_E_T * U_F_T)
+
+big_A = (big_B_T * (U_O.C.transpose()))
+
+
+A = Matrix([[-0.03749259,  0.62388342, -0.59111016, -0.50985544],
+ [ 0.92760196,  0.17984117, -0.12871081,  0.30107356],
+ [-0.092285,    0.73066339,  0.66355715,  0.13155377],
+ [-0.36004499,  0.21108682, -0.44012977,  0.79504449]])
+
+B = Matrix([[-0.317886,    0.77150728 ,-0.34916656 , 0.42638917],
+ [-0.92321982, -0.17538743,  0.03804274 ,-0.33978988],
+ [ 0.05827144, -0.35261667, -0.93047666 ,-0.08049298],
+ [-0.20788961 ,-0.49967715 , 0.10415689,  0.83441956]])
+
+U_B = Matrix(TensorProduct(B, I))
+U_A = Matrix(TensorProduct(I, A))
+
+big_C = U_B * U_A
+
+U_C_T = big_C * (big_A.C.transpose())
+U_C = U_C_T.C.transpose()
+
+# pprint(U_C)
+pprint((U_F * U_E * U_D * U_B * U_A).transpose())
+exit()
 
 # A = MatrixSymbol('A', 4, 4).as_explicit()
 # B = MatrixSymbol('B', 4, 4).as_explicit()
@@ -30,7 +125,7 @@ B = Matrix(variables_symbols_matrix_B)
 U_B = Matrix(TensorProduct(B, I))
 U_B_T = Matrix(TensorProduct(B, I)).transpose()
 
-
+# pprint(U_B)
 symbols = list(variables_symbols_A)
 symbols.extend(list(variables_symbols_B))
 
@@ -61,10 +156,14 @@ I_8 = Matrix(np.eye(8))
 
 equations_matrix = U_B * U_A * U_O
 
-eqs_1 = list(equations_matrix.col(0) - v)
-eqs_2 = list(equations_matrix.row(0) - v.transpose())
-eqs_3 = list(equations_matrix.col(1) - v_2)
-eqs_4 = list(equations_matrix.row(1) - v_2.transpose())
+eqs_1 = list((U_A * U_O).col(0) - U_B_T * v)
+eqs_2 = list((U_B_T * U_O).col(0) - U_A * v)
+# eqs_3 = list(U_A * (U_O.col(1)) - U_B_T * v_2)
+# eqs_2 = list((U_B_T * U_O).col(1) - U_A * v_2)
+# eqs_1 = list(equations_matrix.col(0) - v)
+# eqs_2 = list(equations_matrix.row(0) - v.transpose())
+# eqs_3 = list(equations_matrix.col(1) - v_2)
+# eqs_4 = list(equations_matrix.row(1) - v_2.transpose())
 
 
 # eqs_2 = list((equations_matrix.col(1) - v_2)[1:])
@@ -72,8 +171,8 @@ eqs_4 = list(equations_matrix.row(1) - v_2.transpose())
 # eqs_2 = [A.row(x).norm() ** 2 - 1 for x in range(4)]
 # eqs_3 = [A.col(x).norm() ** 2 - 1 for x in range(4)]
 eqs_1.extend(eqs_2)
-eqs_1.extend(eqs_3)
-eqs_1.extend(eqs_4)
+# eqs_1.extend(eqs_3)
+# eqs_1.extend(eqs_4)
 
 # pprint(eqs_3)
 # exit()
@@ -81,19 +180,21 @@ eqs_1.extend(eqs_4)
 
 solutions = nonlinsolve(eqs_1, symbols)
 
-print(solutions)
-# solutions_list = list(list(solutions)[0])
+# print(solutions)
+solutions_list = list(list(solutions)[0])
 
-# exit()
-# solutions_list = list(solutions[0])
 
 first_solutions_matrix_A = Matrix(np.array(solutions_list[:16]).reshape(4, 4))
 first_solutions_matrix_B = Matrix(np.array(solutions_list[16:]).reshape(4, 4))
 
+pprint(first_solutions_matrix_A)
+pprint(first_solutions_matrix_B)
+
+
 U_A = Matrix(TensorProduct(I, first_solutions_matrix_A))
 U_B = Matrix(TensorProduct(first_solutions_matrix_B, I))
 
-pprint(U_B * U_A * U_O)
+pprint(simplify(U_B * U_A * U_O).row(0))
 
 exit()
 
