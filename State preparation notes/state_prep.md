@@ -38,3 +38,20 @@ https://arxiv.org/abs/quant-ph/0507171
 
 THREE QUBIT GATE FROM 6 TWO QUBITS GATES ETC:
 https://arxiv.org/abs/quant-ph/9503016
+
+
+Matrix product states etc.:
+
+Minimizing entanglement entropy for enhanced quantum state preparation
+https://arxiv.org/abs/2507.22562
+
+Encoding of Matrix Product States into Quantum Circuits of One- and Two-Qubit Gates
+https://arxiv.org/abs/1908.07958
+
+Matrix product unitaries: structure, symmetries, and topological invariants
+
+Matrix Product Representation of Locality Preserving Unitaries
+https://arxiv.org/abs/1704.01943
+
+Matrix Product State Representations
+https://arxiv.org/abs/quant-ph/0608197
