@@ -39,7 +39,7 @@ def givens_decomposition_left(U):
             G2, r = complex_givens_for(a, b)
             G = np.eye(n, dtype=complex)
             G[np.ix_([j, i], [j, i])] = G2
-            # print(G)
+            
             A = G @ A
             G_list.append(G)
     return G_list, A
@@ -101,6 +101,7 @@ def construct_unitary(diag, theta, alpha, beta):
             G2 = angle_givens_for(theta[index], alpha[index], beta[index])
             G[np.ix_([j, i], [j, i])] = G2
             G_list.append(G)
+
             # print(G)
             index += 1
 
@@ -114,13 +115,13 @@ def construct_unitary(diag, theta, alpha, beta):
 
 # --- Step 2: Example run ---
 if __name__ == "__main__":
-    U = random_unitary(4, seed=52)
+    U = random_unitary(4, seed=42)
     # print(U)
     print("Reconsructed\n")
-#     U = np.array([[-0.54409413, -0.10171701, -0.25889078,  0.79157488],
-#  [-0.39583923,  0.59434125, -0.58362529, -0.38658932],
-#  [ 0.7315188,   0.35371355, -0.41023319,  0.41409624],
-#  [-0.11024121,  0.71505164,  0.65120336,  0.22908997]])
+    U = np.array([[-0.54409413, -0.10171701, -0.25889078,  0.79157488],
+ [-0.39583923,  0.59434125, -0.58362529, -0.38658932],
+ [ 0.7315188,   0.35371355, -0.41023319,  0.41409624],
+ [-0.11024121,  0.71505164,  0.65120336,  0.22908997]])
     U= np.array([[ 0.62923587, -0.27810894,  0.06225542 , 0.32819821,  0.21411186, -0.26067223,
   -0.16945149 , 0.52213037],
  [-0.12832786, -0.72115181 , 0.06330487 ,-0.25546329  ,0.1811286,  -0.15270451,
@@ -148,11 +149,18 @@ if __name__ == "__main__":
     print("Max reconstruction error:",
           np.max(np.abs(U - U_reconstructed)))
 
-    # print(U_reconstructed)
+    print(U_reconstructed)
 
     diag_angles = get_diag_angles(D)
     thetas, alphas, betas = get_givens_angles(G_list)
 
+    print(f"Diag: {len(diag_angles)}")
+    print(f"Thetas: {len(thetas)}")
+    print(f"Alphas: {alphas}")
+    print(f"Betas: {betas}")
+
     U_reconstructed_2 = construct_unitary(diag_angles, thetas, alphas, betas)
     print("Max reconstruction error:",
           np.max(np.abs(U - U_reconstructed_2)))
+    
+    print(U_reconstructed_2)
