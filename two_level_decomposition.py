@@ -6,8 +6,8 @@ np.set_printoptions(threshold=sys.maxsize, linewidth=sys.maxsize)
 def clean_matrix(M):
     for i in range(len(M)):
         for j in range(len(M)):
-            if np.abs(M[i][j]) < 1e-10: M[i][j] = 0
-            else: M[i][j] = float('{0:.6f}'.format(M[i][j]))
+            if np.abs(M[i][j]) < 1e-10: M[i][j] = float(0.0)
+            M[i][j] = float('{0:.6f}'.format(M[i][j]))
     return M
 
 def complex_givens_for(a, b, swap=False):
@@ -30,61 +30,67 @@ def two_level_decomposition_left(U):
     n = U.shape[0]
     A = U.copy().astype(float)
     G_list = []
-    for j in range(n):
+    for j in range(n-1):
         for i in range(j + 1, n):
             a = A[j, j]
             b = A[i, j]
             G2 = complex_givens_for(a, b)
             G = np.eye(n, dtype=float)
             G[np.ix_([j, i], [j, i])] = G2
-            
-            A = G @ A
-            G_list.append(G)
-    return G_list, A
-
-def create_C(U):
-    n = U.shape[0]
-    A = U.copy().astype(float)
-    
-    G_list = []
-    for j in range(1):
-        for i in range(j + 1, 2):
-            a = A[j, j]
-            b = A[i, j]
-            G2 = complex_givens_for(a, b, True)
-            G = np.eye(n, dtype=float)
-            print(G2)
-            print("\n")
-            G[np.ix_([j, i], [j, i])] = G2
-            
-            A = G @ A
-            # print(A)
+            # print(G)
             # print("\n")
+            A = G @ A
             G_list.append(G)
-    return G_list, A
 
-def create_A(U):
+    G_0 = np.eye(n)
+
+    for G in G_list:
+        G_0 = G @ G_0
+
+    return G_0
+
+
+def two_level_decomposition_left_upper(U):
     n = U.shape[0]
     A = U.copy().astype(float)
     G_list = []
-    for j in range(n):
-        for i in range(j + 1, n):
-            a = A[j, j]
-            b = A[i, j]
-            if j == 1 and i==2:
-                G2 = complex_givens_for(a, b, True)
-            else:
-                G2 = complex_givens_for(a, b, False)
-            G = np.eye(n, dtype=float)
-            G[np.ix_([j, i], [j, i])] = G2
-            
-
+    for j in range(n-1, 0, -1):
+        for i in range(j - 1, -1, -1):
+            G = create_single_G(A, j, i)
             A = G @ A
-            print(clean_matrix(A))
-            print("\n")
             G_list.append(G)
-                
-    return G_list, A
+
+    G_0 = np.eye(n)
+
+    for G in G_list:
+        G_0 = G @ G_0
+
+    return G_0
+
+def create_single_G(U, j, i):
+    n = U.shape[0]
+    A = U.copy().astype(float)
+    a = A[j, j]
+    b = A[i, j]
+    G2 = complex_givens_for(a, b)
+    G = np.eye(n, dtype=float)
+    G[np.ix_([j, i], [j, i])] = G2
+
+    return G
+
+def create_single_G_inverted(U, j, i):
+    n = U.shape[0]
+    A = U.copy().astype(float)
+    a = A[j, i]
+    b = A[j+1, i]
+    G2 = complex_givens_for(a, b)
+    G = np.eye(n, dtype=float)
+    G[np.ix_([j, i], [j, i])] = G2
+
+    return G
+
+    
+
 
 U= np.array([[ 0.62923587, -0.27810894,  0.06225542 , 0.32819821,  0.21411186, -0.26067223, -0.16945149 , 0.52213037],
              [-0.12832786, -0.72115181 , 0.06330487 ,-0.25546329  ,0.1811286,  -0.15270451, 0.58015675, -0.03866454],
@@ -104,66 +110,54 @@ SWAP = np.array([[1, 0, 0 ,0],
 SWAP_I = np.kron(SWAP, I)
 I_SWAP = np.kron(I, SWAP)
 
-U_1 = U[:4,:4]
+A = np.array([[1, 2, 3, 4],
+              [5, 6, 7, 8],
+              [9, 10, 11, 12],
+              [13, 14, 15, 16]])
 
-# print(U_1)
-G_list, A= two_level_decomposition_left(U_1)
-# G_list, A= create_A(U_1)
-G_0 = np.eye(len(G_list[0]))
+A_U = np.kron(I, A.copy())
+B_U = np.kron(A.copy(), I)
 
-for G in G_list:
-    G_0 = G @ G_0
+# print("U ///////////////////////")
+# two_level_decomposition_left(U)
+# print("A_U ///////////////////////")
+# two_level_decomposition_left(A_U)
+# print("B_U ///////////////////////")
+# two_level_decomposition_left(B_U)
 
-
-A_U = np.kron(I, G_0)
-
-U = clean_matrix(A_U @ U)
-# print(U)
-# print("\n")
 # exit()
+
+
+
+U_1 = U[:4,:4]
+G = two_level_decomposition_left(U_1)
+A_U = np.kron(I, G)
+U = clean_matrix(A_U @ U)
+
+print(U)
+print("\n")
+# exit()
+
 
 U = SWAP_I @ I_SWAP @ U
+print(U)
+print("\n")
+U_2 = U[4:, :4]
+G = two_level_decomposition_left(U_2)
+# G = create_single_G(U_2, 0, 2)
+B_U = I_SWAP @ SWAP_I @ np.kron(I, G)
+U = clean_matrix(B_U @ U)
+
+print(U)
+print("\n")
+# exit()
+
+# # I_SWAP @ SWAP_I @ BB @ SWAP_I @ I_SWAP
+
+# U_1 = U[:4,:4]
+# G = two_level_decomposition_left(U_1)
+# A_U = np.kron(I, G)
+# U = clean_matrix(A_U @ U)
 
 # print(U)
 # print("\n")
-
-# exit()
-U_2 = U[4:, :4]
-# print(U_2)
-G_list, A= two_level_decomposition_left(U_2)
-
-G_0 = np.eye(len(G_list[0]))
-
-for G in G_list:
-    G_0 = G @ G_0
-
-B_U =  np.kron(I, G_0)
-# B_U = I_SWAP @ SWAP_I @ np.kron(I, G_0)
-
-U = clean_matrix(B_U @ U)
-
-
-
-print(U)
-print("\n")
-# exit()
-
-# I_SWAP @ SWAP_I @ BB @ SWAP_I @ I_SWAP
-
-###################################
-
-U_2 = U[4:,:4]
-
-# print(U_1)
-G_list, C= create_C(U_2)
-G_0 = np.eye(len(G_list[0]))
-print(G_0)
-print("\n")
-for G in G_list:
-    G_0 = G @ G_0
-
-
-C_U = np.kron(I, G_0)
-
-U = clean_matrix(C_U @ U)
-print(U)
