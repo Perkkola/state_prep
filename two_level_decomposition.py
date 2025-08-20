@@ -37,8 +37,9 @@ def two_level_decomposition_left(U):
             G2 = complex_givens_for(a, b)
             G = np.eye(n, dtype=float)
             G[np.ix_([j, i], [j, i])] = G2
-            # print(G)
-            # print("\n")
+            print(j)
+            print(i)
+            print("\n")
             A = G @ A
             G_list.append(G)
 
@@ -67,12 +68,42 @@ def two_level_decomposition_left_upper(U):
 
     return G_0
 
-def create_single_G(U, j, i):
+def two_level_decomposition_left_inverted(U):
+    n = U.shape[0]
+    A = U.copy().astype(float)
+    X = np.array([[0, 1],
+                  [1, 0]])
+    G_list = []
+    for j in range(n-1, 0, -1):
+        for i in range(j-1, -1, -1):
+            a = A[n-j-1, n-i-2]
+            b = A[n-i-1, n-i-2]
+            G2 = complex_givens_for(a, b, True)
+            G = np.kron(X, X) @ np.eye(n, dtype=float)
+            G[np.ix_([i, j], [n-i-1, n-j-1])] = G2
+            print(A)
+            print("\n")
+            print(a)
+            print(b)
+            print("\n")
+            print(G)
+            print("\n")
+            A = G @ A
+            G_list.append(G)
+
+    G_0 = np.eye(n)
+
+    for G in G_list:
+        G_0 = G @ G_0
+
+    return G_0
+
+def create_single_G(U, j, i, swap = False):
     n = U.shape[0]
     A = U.copy().astype(float)
     a = A[j, j]
     b = A[i, j]
-    G2 = complex_givens_for(a, b)
+    G2 = complex_givens_for(a, b, swap)
     G = np.eye(n, dtype=float)
     G[np.ix_([j, i], [j, i])] = G2
 
@@ -81,8 +112,8 @@ def create_single_G(U, j, i):
 def create_single_G_inverted(U, j, i):
     n = U.shape[0]
     A = U.copy().astype(float)
-    a = A[j, i]
-    b = A[j+1, i]
+    a = A[j, j]
+    b = A[i, j]
     G2 = complex_givens_for(a, b)
     G = np.eye(n, dtype=float)
     G[np.ix_([j, i], [j, i])] = G2
@@ -102,6 +133,9 @@ U= np.array([[ 0.62923587, -0.27810894,  0.06225542 , 0.32819821,  0.21411186, -
              [-0.64909721 ,-0.01092904, -0.15625139 , 0.19494701 , 0.02944304 , 0.09593373, 0.0091941  , 0.71132259]])
 
 I = np.eye(2)
+X = np.array([[0, 1],
+            [1, 0]])
+
 SWAP = np.array([[1, 0, 0 ,0],
                [0, 0, 1, 0],
                [0, 1, 0, 0],
@@ -115,17 +149,122 @@ A = np.array([[1, 2, 3, 4],
               [9, 10, 11, 12],
               [13, 14, 15, 16]])
 
-A_U = np.kron(I, A.copy())
-B_U = np.kron(A.copy(), I)
 
-# print("U ///////////////////////")
-# two_level_decomposition_left(U)
+A_X = np.kron(A.copy(), X)
+A_U = np.kron(I, A.copy())
+
+# print(A_X)
+
+# print(I_SWAP @ SWAP_I @ A_U @ SWAP_I @ I_SWAP @ (np.kron(I, np.kron(I, X))))
+# exit()
+# A_U = np.kron(I, A.copy())
+# B_U = np.kron(A.copy(), I)
+
+G_list = []
+
+G = create_single_G(U, 0, 2)
+U = G @ U
+G_list.append(G)
+G = create_single_G(U, 0, 4)
+U = G @ U
+G_list.append(G)
+G = create_single_G(U, 0, 6)
+U = G @ U
+G_list.append(G)
+
+
+G = create_single_G(U, 0, 1)
+U = G @ U
+G_list.append(G)
+G = create_single_G(U, 0, 3)
+U = G @ U
+G_list.append(G)
+G = create_single_G(U, 1, 2)
+U = G @ U
+G_list.append(G)
+G = create_single_G(U, 1, 3)
+U = G @ U
+G_list.append(G)
+G = create_single_G(U, 2, 3)
+U = G @ U
+G_list.append(G)
+
+
+G = create_single_G(U, 0, 5)
+U = G @ U
+G_list.append(G)
+G = create_single_G(U, 0, 7)
+U = G @ U
+G_list.append(G)
+
+
+G = create_single_G(U, 1, 4)
+U = G @ U
+G_list.append(G)
+G = create_single_G(U, 1, 5)
+U = G @ U
+G_list.append(G)
+G = create_single_G(U, 1, 6)
+U = G @ U
+G_list.append(G)
+G = create_single_G(U, 1, 7)
+U = G @ U
+G_list.append(G)
+G = create_single_G(U, 2, 4)
+U = G @ U
+G_list.append(G)
+G = create_single_G(U, 2, 5)
+U = G @ U
+G_list.append(G)
+G = create_single_G(U, 2, 6)
+U = G @ U
+G_list.append(G)
+G = create_single_G(U, 2, 7)
+U = G @ U
+G_list.append(G)
+G = create_single_G(U, 3, 4)
+U = G @ U
+G_list.append(G)
+G = create_single_G(U, 3, 5)
+U = G @ U
+G_list.append(G)
+G = create_single_G(U, 3, 6)
+U = G @ U
+G_list.append(G)
+G = create_single_G(U, 3, 7)
+U = G @ U
+G_list.append(G)
+G = create_single_G(U, 4, 5)
+U = G @ U
+G_list.append(G)
+G = create_single_G(U, 4, 6)
+U = G @ U
+G_list.append(G)
+G = create_single_G(U, 4, 7)
+U = G @ U
+G_list.append(G)
+G = create_single_G(U, 5, 6)
+U = G @ U
+G_list.append(G)
+G = create_single_G(U, 5, 7)
+U = G @ U
+G_list.append(G)
+G = create_single_G(U, 6, 7)
+U = G @ U
+G_list.append(G)
+
+
+print(clean_matrix(U))
+print("\n")
+exit()
+print("U ///////////////////////")
+two_level_decomposition_left(U)
 # print("A_U ///////////////////////")
 # two_level_decomposition_left(A_U)
 # print("B_U ///////////////////////")
 # two_level_decomposition_left(B_U)
 
-# exit()
+exit()
 
 
 
