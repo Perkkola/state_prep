@@ -71,6 +71,26 @@ I_W = np.kron(I, W)
 
 print(block_diag)
 
+A = np.array([[-1j, 0, 0, 0],
+              [0, -np.conj(block_diag[1, 1]), 0, 0],
+              [0, 0, block_diag[1, 1] * np.conj(block_diag[2, 2]), 0],
+              [0, 0, 0, np.conj(block_diag[1, 1])]])
+
+I_A = np.kron(I, A)
+
+# print(clean_matrix(I_A @ block_diag))
+
+new_diag = np.array([[np.sqrt(block_diag[0, 0] * np.conj(block_diag[1, 1])), 0, 0, 0, 0, 0, 0, 0],
+                     [0, np.conj(np.sqrt(block_diag[0, 0] * np.conj(block_diag[1, 1]))), 0, 0, 0, 0, 0, 0],
+                     [0, 0, np.sqrt(block_diag[2, 2] * np.conj(block_diag[3, 3])), 0, 0, 0, 0, 0],
+                     [0, 0, 0, np.conj(np.sqrt(block_diag[2, 2] * np.conj(block_diag[3, 3]))), 0, 0, 0, 0],
+                     [0, 0, 0, 0, np.sqrt(block_diag[4, 4] * np.conj(block_diag[5, 5])), 0, 0, 0],
+                     [0, 0, 0, 0, 0, np.conj(np.sqrt(block_diag[4, 4] * np.conj(block_diag[5, 5]))), 0, 0],
+                     [0, 0, 0, 0, 0, 0, np.sqrt(block_diag[6, 6] * np.conj(block_diag[7, 7])), 0],
+                     [0, 0, 0, 0, 0, 0, 0, np.conj(np.sqrt(block_diag[6, 6] * np.conj(block_diag[7, 7])))]])
+
+print(new_diag)
+
 # print(clean_matrix(block_diag))
 # print(clean_matrix(I_diag_1_dgr @ block_diag))
 
