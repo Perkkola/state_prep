@@ -1,7 +1,7 @@
 import numpy as np
 import sys
 # from decimal import *
-from scipy.linalg import cossin
+from scipy.linalg import cossin, qr
 
 np.set_printoptions(threshold=sys.maxsize, linewidth=sys.maxsize)
 
@@ -147,6 +147,16 @@ I = np.eye(2)
 X = np.array([[0, 1],
             [1, 0]])
 
+CX = np.array([[1, 0, 0, 0],
+               [ 0, 0, 0, 1],
+               [ 0, 0, 1, 0],
+               [0, 1, 0 ,0]])
+
+XC = np.array([[1, 0, 0, 0],
+               [0, 1, 0, 0],
+               [0, 0, 0, 1],
+               [0, 0, 1, 0]])
+
 X_I_I = np.kron(X, np.kron(I, I))
 I_X_I = np.kron(I, np.kron(X, I))
 I_I_X = np.kron(I, np.kron(I, X))
@@ -154,6 +164,11 @@ X_X_I = np.kron(X, np.kron(X, I))
 I_X_X = np.kron(I, np.kron(X, X))
 X_I_X = np.kron(X, np.kron(I, X))
 X_X_X = np.kron(X, np.kron(X, X))
+
+CX_I = np.kron(CX, I)
+XC_I = np.kron(XC, I)
+I_CX = np.kron(I, CX)
+I_XC = np.kron(I, XC)
 
 SWAP = np.array([[1, 0, 0 ,0],
                [0, 0, 1, 0],
@@ -178,15 +193,81 @@ A_U = np.kron(I, A.copy())
 
 u, cs, vdh = cossin(U, p=4, q=4)
 
+print(cs)
+exit()
+
+
+u_1 = u[:4, :4]
+A_U = np.kron(I, u_1.T)
+u = clean_matrix(A_U @ u)
+
 print(u)
 print("\n")
 
+u_2 = u[4:, 4:]
 
-# u_1 = u[:4, :4]
-# A_U = np.kron(I, u_1.T)
-# u = clean_matrix(A_U @ u)
+u_1, cs_1, vdh_1 = cossin(u_2, p=2, q=2)
+
+print(u_1)
+print("\n")
+print(cs_1)
+print("\n")
+print(vdh_1)
+print("\n")
+
+exit()
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+u = SWAP_I @ I_SWAP @ u
+u = I_X_I @ u
+
+u_1 = u[4:, 4:]
+G = create_single_G(u_1, 0, 1)
+B_U =  np.kron(I, G)
+u = clean_matrix(B_U @ u)
+
+
+u = I_X_I @ u
+u = I_SWAP @ SWAP_I @ u
+
+
+
+u = SWAP_I @ I_SWAP @ u
+u = CX_I @ u
+u = XC_I @ u
+
+
+print(clean_matrix(u))
+print("\n")
+
+
+# u = XC_I @ u
+# u = X_X_I @ u
+# u = CX_I @ u
+# print(clean_matrix(u))
+# print("\n")
+
+# u_1 = u[4:, 4:]
+# G = create_single_G(u_1, 1, 2)
+# B_U =  I_SWAP @ SWAP_I @  np.kron(I, G)
+# u = clean_matrix(B_U @ u)
+# print(clean_matrix(u))
+# print("\n")
+exit()
 
 # u = X_X_I @ u
 # u = SWAP_I @ I_SWAP @ u

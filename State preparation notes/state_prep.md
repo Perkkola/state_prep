@@ -55,3 +55,19 @@ https://arxiv.org/abs/1704.01943
 
 Matrix Product State Representations
 https://arxiv.org/abs/quant-ph/0608197
+
+
+Logarithmic depth CNOT ladder: 
+https://arxiv.org/pdf/2501.16802
+
+Linear depth MCSU on LNN architecture:
+https://www.arxiv.org/pdf/2506.00695v1
+
+Low rank state prep (take the schmidt coefficient into account):
+https://ieeexplore.ieee.org/stamp/stamp.jsp?tp=&arnumber=10190145
+
+Vittorio state prep:
+https://arxiv.org/pdf/2505.06054
+
+Better QSD:
+https://arxiv.org/pdf/2403.13692+
