@@ -10,6 +10,7 @@ num_controls = num_qubits - 1
 
 assert num_controls >= 1
 
+dist_two_bit_map = {2: deque([1]), 3: deque([1]), 4: deque([0, 1]), 5: deque([1, 1, 0, 1]), 6: deque([0, 0, 0, 0, 1, 1, 0, 1])}
 
 
 def grey_code(dist, half):
@@ -31,7 +32,6 @@ def get_long_range_grey_gates(dist, half):
     long_range_gates = []
     for gate in grey_gate_queue:
         if gate == "RZ": continue
-
         if gate[1] - gate[0] > 1: long_range_gates.append(gate)
     
     return long_range_gates
@@ -40,8 +40,7 @@ def cancel_or_append(cnot, size):
     global state
     global gate_queue
     global discovered_pp_terms
-    global first_half_terms
-    global first_half
+    global pp_terms
 
     prev_gate = gate_queue.pop()
 
@@ -51,8 +50,6 @@ def cancel_or_append(cnot, size):
     
     if cnot[1] == size and state[size] in pp_terms and state[size] not in discovered_pp_terms:
         discovered_pp_terms.add(state[size])
-        if not first_half: 
-            first_half_terms.append(state[size])
         gate_queue.append("RZ")
 
 def long_range_cnot(dist, size):
@@ -113,18 +110,12 @@ def route_multiplexor():
     global state
     global gate_queue
     global discovered_pp_terms
-    global first_half_terms
-    global first_half
     global pp_terms
 
-    first_half = True
-    first_half_terms = [2, 3]
-    
+    long_range_bit_map = {2: deque([1])}
 
     for i in range(num_controls):
-        first_half = True
         long_range_gates = get_long_range_grey_gates(i + 1, True)
-        bit_map = deque()
         
         pp_terms = set([x for x in range(2 ** (i + 1), 2 ** (i + 2))])
         discovered_pp_terms = set([2 ** (i + 1)])
@@ -132,40 +123,49 @@ def route_multiplexor():
         gate_queue = deque()
         gate_queue.append("RZ")
 
+        bit_map = deque()
+
         long_range_cnot(1, i + 1)
-        for j, gate in enumerate(long_range_gates[:-1]):
-            next_term = first_half_terms[2:][j * 2]
-            test_state = long_range_leg(gate[1] - gate[0], state.copy(), i + 1)
-
-            if test_state[i + 1] == next_term:
-                long_range_cnot(gate[1] - gate[0], i + 1)
-                bit_map.append(1)
-            else:
-                reverse_long_range_cnot(gate[1] - gate[0], i + 1)
-                bit_map.append(0)
-
-        first_half = False
-        long_range_cnot(i + 1, i + 1)
-        bit_map.append(1)
-        print(bit_map)
         for gate in long_range_gates:
-            if bit_map.popleft() == 0 or i + 1 == 2:
-                long_range_cnot(gate[1] - gate[0], i + 1)
+            gate_index = gate[1] - gate[0]
+            orientation = long_range_bit_map[gate_index].pop()
+            long_range_bit_map[gate_index].appendleft(orientation)
+            bit_map.append(orientation)
+
+            if orientation == 1:
+                long_range_cnot(gate_index, i + 1)
             else:
-                reverse_long_range_cnot(gate[1] - gate[0], i + 1)
+                reverse_long_range_cnot(gate_index, i + 1)
 
-        long_range_cnot(1, i + 1)
-
-        print((i+1, first_half_terms))
-        first_half_terms = [x * 2 for x in first_half_terms]
-
-    
+        for gate in long_range_gates:
+            gate_index = gate[1] - gate[0]
+            if bit_map.popleft() == 0 or i == 1:
+                long_range_cnot(gate_index, i + 1)
+            else:
+                reverse_long_range_cnot(gate_index, i + 1)
         
+        for j in range(i + 1, 0, -1):
+            if j == 1: 
+                if i <= 4:
+                    offset = 1 if i <= 4 else 0
+                    long_range_bit_map[2] = dist_two_bit_map[i + 1 + offset]
+                    print(long_range_bit_map[2])
+                else: 
+                    # print(f"Bits: {i % 2}, amount: {2 ** (i - 2)}")
+                    for _ in range(2 ** (i - 2)):
+                        long_range_bit_map[2].appendleft(i % 2)
+            else:
+                long_range_bit_map[j + 1] = long_range_bit_map[j]
+                print(long_range_bit_map[j + 1])
+
+        print("//////////////////////////")
+            
+        long_range_cnot(1, i + 1)
 
     circuit_length = len([gate for gate in gate_queue if gate != "RZ" and gate != "Barrier C" and gate != "Barrier U"])
     print(f"Found {len(discovered_pp_terms)}/{len(pp_terms)} phase polynomial terms.")
     print(f"Circuit length: {circuit_length}")
-    draw_circuit(0, gate_queue)
+    # draw_circuit(0, gate_queue)
     return gate_queue
 
 def find_optimal(long_range_gates):
@@ -253,8 +253,8 @@ if __name__ == "__main__":
 
     long_range_gates = get_long_range_grey_gates(num_controls, True)
 
-    # route_multiplexor()
-    # exit()
+    route_multiplexor()
+    exit()
     optimal_circuits, optimal_circuit_len = find_optimal(long_range_gates)
 
 
