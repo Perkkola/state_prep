@@ -1,9 +1,10 @@
 from collections import deque
-import multiprocessing
-import math
 from qiskit.circuit import QuantumCircuit, Parameter
 import matplotlib.pyplot as plt
 import sys
+import os
+from functools import reduce
+import json
 
 num_qubits = int(sys.argv[1]) #mapping num_qubits - 1 to the last physical qubit on LNN arch
 num_controls = num_qubits - 1
@@ -94,17 +95,32 @@ def reverse_long_range_cnot(dist, size):
         state[i_f + 1] = state[i_f + 1] ^ state[i_f]
         cancel_or_append((i_f, i_f + 1), size)
 
-def long_range_leg(dist, state, size):
-    offset = size - dist
-    for i in range(dist):
-        i_f = i + offset
-        state[i_f + 1] = state[i_f + 1] ^ state[i_f]
+def save_json(bit_map, file):
+    json_bitmap = {}
 
-    return state
+    for key, value in bit_map.items():
+        json_bitmap[str(key)] = reduce(lambda x, y: str(x) + str(y), value, "")
 
-def reverse_long_lange_leg(dist, state, size):
-    dist = dist - 1
-    return long_range_cnot(dist, state, size)
+    with open(file, 'w', encoding='utf-8') as f:
+        json.dump(json_bitmap, f, ensure_ascii=False, indent=4)
+
+def find_prev_best():
+    long_range_bit_map = {2: deque([1])}
+    prev_best_template_index = 0
+    for i in range(num_controls, 1, -1):
+        if i <= num_controls and os.path.exists(f"patterns/{i}-ctrl.json"):
+            with open(f"patterns/{i}-ctrl.json") as f:
+                bit_map = {}
+                prev_best_template_index = i - 1
+                json_bitmap = json.load(f)
+
+                for key, value in json_bitmap.items():
+                    bit_map[int(key)] = deque([int(x) for x in value])
+
+                long_range_bit_map = bit_map
+                break
+
+    return long_range_bit_map, prev_best_template_index
 
 def route_multiplexor():
     global state
@@ -112,9 +128,13 @@ def route_multiplexor():
     global discovered_pp_terms
     global pp_terms
 
-    long_range_bit_map = {2: deque([1])}
+    long_range_bit_map, prev_best_template_index = find_prev_best()
 
-    for i in range(num_controls):
+
+    for i in range(prev_best_template_index, num_controls):
+        if i >= 1 and not os.path.exists(f"patterns/{i+1}-ctrl.json"):
+            save_json(long_range_bit_map, f"patterns/{i+1}-ctrl.json")
+
         long_range_gates = get_long_range_grey_gates(i + 1, True)
         
         pp_terms = set([x for x in range(2 ** (i + 1), 2 ** (i + 2))])
@@ -147,121 +167,38 @@ def route_multiplexor():
         for j in range(i + 1, 0, -1):
             if j == 1: 
                 if i <= 4:
-                    offset = 1 if i <= 4 else 0
-                    long_range_bit_map[2] = dist_two_bit_map[i + 1 + offset]
-                    print(long_range_bit_map[2])
+                    long_range_bit_map[2] = dist_two_bit_map[i + 2]
                 else: 
-                    # print(f"Bits: {i % 2}, amount: {2 ** (i - 2)}")
                     for _ in range(2 ** (i - 2)):
                         long_range_bit_map[2].appendleft(i % 2)
             else:
-                long_range_bit_map[j + 1] = long_range_bit_map[j]
-                print(long_range_bit_map[j + 1])
+                long_range_bit_map[j + 1] = long_range_bit_map[j].copy()
 
-        print("//////////////////////////")
-            
+        
         long_range_cnot(1, i + 1)
 
-    circuit_length = len([gate for gate in gate_queue if gate != "RZ" and gate != "Barrier C" and gate != "Barrier U"])
+    circuit_length = len([gate for gate in gate_queue if gate != "RZ"])
     print(f"Found {len(discovered_pp_terms)}/{len(pp_terms)} phase polynomial terms.")
     print(f"Circuit length: {circuit_length}")
-    # draw_circuit(0, gate_queue)
     return gate_queue
 
-def find_optimal(long_range_gates):
-    global state
-    global gate_queue
-    global discovered_pp_terms
-    global first_half_terms
-    global first_half
-    global pp_terms
 
-    pp_terms = set([x for x in range(2 ** num_controls, 2 ** num_qubits)])
-    first_half = True
-    first_half_terms = [2, 3]
-
-    optimal_circuits = []
-    optimal_circuit_len = (2 ** num_qubits) * (2 ** num_qubits)
-
-    num_configurations = 2 ** 16
-
-    for n in range(num_configurations):
-        conf = int(f"1{(n >> 0) & 1}011{(n >> 1) & 1}010{(n >> 2) & 1}011{(n >> 3) & 1}011{(n >> 4) & 1}011{(n >> 5) & 1}010{(n >> 6) & 1}011{(n >> 7) & 1}010{(n >> 8) & 1}011{(n >> 9) & 1}010{(n >> 10) & 1}011{(n >> 11) & 1}011{(n >> 12) & 1}011{(n >> 13) & 1}010{(n >> 14) & 1}011{(n >> 15) & 1}011010001010100010001000101010001011011101010111011010001011011011", 2)
-
-        discovered_pp_terms = set([2 ** num_controls])
-        state = {q: 1 << q for q in range(num_qubits)}
-        gate_queue = deque()
-        gate_queue.append("RZ")
-
-        long_range_cnot(1, num_controls)
-        gate_queue.append("Barrier C")
-        for i, gate in enumerate(long_range_gates):
-            if (conf >> i) & 1 == 1:
-                long_range_cnot(gate[1] - gate[0], num_controls)
-                gate_queue.append("Barrier C")
-            else:
-                reverse_long_range_cnot(gate[1] - gate[0], num_controls)
-                gate_queue.append("Barrier U")
-
-        for i, gate in enumerate(long_range_gates):
-            if (conf >> i) & 1 == 0:
-                long_range_cnot(gate[1] - gate[0], num_controls)
-                gate_queue.append("Barrier C")
-            else:
-                reverse_long_range_cnot(gate[1] - gate[0], num_controls)
-                gate_queue.append("Barrier U")
-
-        long_range_cnot(1, num_controls)
-
-        # draw_circuit(gate_queue)
-        if len(discovered_pp_terms) != len(pp_terms): continue
-
-        circuit_length = len([gate for gate in gate_queue if gate != "RZ" and gate != "Barrier C" and gate != "Barrier U"])
-        if circuit_length < optimal_circuit_len:
-            optimal_circuits = []
-            # optimal_circuits.append(conf)
-            optimal_circuits.append(gate_queue.copy())
-            optimal_circuit_len = circuit_length
-        elif circuit_length == optimal_circuit_len:
-            # optimal_circuits.append(conf)
-            optimal_circuits.append(gate_queue.copy())
-        else: continue
-
-    return optimal_circuits, optimal_circuit_len
-
-def draw_circuit(index, gates):
+def draw_circuit(gates):
     qc = QuantumCircuit(num_qubits)
     phi = Parameter("θ")
 
     for gate in gates:
         if gate == "RZ":
             qc.rz(phi, num_controls)
-        elif gate == "Barrier C":
-            qc.barrier(label="C")
-        elif gate == "Barrier U":
-            qc.barrier(label="U")
         else:
             qc.cx(gate[0], gate[1])
     
-    fig = qc.draw(output="mpl", interactive=True, filename=f"./circuits/cnot_at_end/optimal_circuit_{num_controls}-ctrl_{index}.png")
-    # fig = qc.draw(output="mpl", interactive=True)
+    # fig = qc.draw(output="mpl", interactive=True, filename=f"./circuits/cnot_at_end/optimal_circuit_{num_controls}-ctrl_{index}.png")
+    fig = qc.draw(output="mpl", interactive=True)
     plt.show()
 
 
 if __name__ == "__main__":
-
-
-    long_range_gates = get_long_range_grey_gates(num_controls, True)
-
-    route_multiplexor()
-    exit()
-    optimal_circuits, optimal_circuit_len = find_optimal(long_range_gates)
-
-
-
-    print(f"Long range cnots in circuit: {len(long_range_gates)}")
-    print(f"Found {len(optimal_circuits)} optimal circuits.")
-    print(f"Optimal circuit length: {optimal_circuit_len}")
-    for index, circuit in enumerate(optimal_circuits):
-        draw_circuit(0, circuit)
+    gates = route_multiplexor()
+    # draw_circuit(gates)
 
