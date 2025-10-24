@@ -132,47 +132,56 @@ class RoutedMultiplexor(object):
 
     #Finally, make sure everything works and start benchmarking.
     
-    def find_optimal_neighborhood(self):
+    def find_optimal_paths(self):
         optimal_neighborhoods = []
         best_dist_cost = 2 ** 31
 
-        for vertex in self.vertices:
+        for root in self.vertices:
+            paths = {root: [root]}
+            vertices_in_neighborhood = set([root])
             dist_cost = 0
-            root_neighborhood = {0: set([vertex])}
-            vertices_in_neighborhood = set([vertex])
-            neighborhood_size = 1
-            current_dist = 0
-
+            current_dist = 1
             found_neighborhood = False
+            neighborhood_size = 1
+
             while not found_neighborhood:
-                current_search_space = set()
+                paths_copy = paths.copy()
+                current_dist_paths = list(filter(lambda path: len(path) == current_dist, paths_copy.values()))
+                current_dist_paths.sort(key = lambda path: len(self.neighbors[path[-1]]), reverse=True)
 
-                for current_dist_neighbor in root_neighborhood[current_dist]:
+                for path in current_dist_paths:
                     if found_neighborhood: break
- 
-                    for next_dist_neighbor in self.neighbors[current_dist_neighbor]:
-                        if next_dist_neighbor not in vertices_in_neighborhood:
+                    tail = path[-1]
 
-                            vertices_in_neighborhood.add(next_dist_neighbor)
-                            dist_cost += current_dist + 1
+                    neighbors = self.neighbors[tail]
+
+                    for neighbor in neighbors:
+                        
+                        if neighbor not in vertices_in_neighborhood:
+                            path_copy = path.copy()
+                            path_copy.append(neighbor)
+
+                            paths[neighbor] = path_copy
+                            vertices_in_neighborhood.add(neighbor)
                             neighborhood_size += 1
-                            current_search_space.add(next_dist_neighbor)
-
+                            dist_cost += current_dist
                             if neighborhood_size >= self.num_qubits:
                                 found_neighborhood = True
                                 break
+
                 current_dist += 1
-                root_neighborhood[current_dist] = current_search_space
-            
+                
             if dist_cost < best_dist_cost:
                 optimal_neighborhoods = []
-                optimal_neighborhoods.append(root_neighborhood)
+                optimal_neighborhoods.append(paths)
                 best_dist_cost = dist_cost
             elif dist_cost == best_dist_cost:
-                optimal_neighborhoods.append(root_neighborhood)
-        
-        return optimal_neighborhoods, best_dist_cost
-    
+                optimal_neighborhoods.append(paths)
+
+        print(best_dist_cost)
+        for neighborhood in optimal_neighborhoods:
+            print(neighborhood)
+
     def draw_backend(self, planar = False):
         G = nx.Graph()
         G.add_edges_from(self.coupling_map)
@@ -229,8 +238,6 @@ if __name__ == "__main__":
     fake_cairo = FakeCairoV2()
 
     routed_multiplexor = RoutedMultiplexor(coupling_map=fake_garnet, num_qubits=num_qubits)
-    optimal_neighborhoods, best_dist_cost = routed_multiplexor.find_optimal_neighborhood()
-    print(best_dist_cost)
-    for neighborhood in optimal_neighborhoods:
-        print(neighborhood)
+    routed_multiplexor.find_optimal_paths()
+
     routed_multiplexor.draw_backend()
