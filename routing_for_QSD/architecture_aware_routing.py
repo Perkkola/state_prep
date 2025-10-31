@@ -1,5 +1,5 @@
 from collections import deque
-from qiskit.circuit import QuantumCircuit, Parameter
+from qiskit.circuit import QuantumCircuit, Parameter, QuantumRegister
 from qiskit_ibm_runtime.fake_provider import FakeCairoV2
 import networkx as nx
 import matplotlib.pyplot as plt
@@ -8,92 +8,7 @@ import os
 import math
 from functools import reduce
 import json
-
-# num_qubits = int(sys.argv[1]) #mapping num_qubits - 1 to the last physical qubit on LNN arch
-# num_controls = num_qubits - 1
-
-# assert num_controls >= 1
-
-def grey_code(dist, half):
-    upper_bound = (2 ** (dist - 1) + 1) if half else 2 ** dist + 1
-
-    for i in range(1, upper_bound):
-        highest_index_diff = 0
-        for j in range(dist):
-            if (i >> j) & 1 != ((i - 1) >> j) & 1: highest_index_diff = j + 1
-        grey_gate_queue.append("RZ")
-        grey_gate_queue.append((dist - highest_index_diff, dist))
-
-def get_long_range_grey_gates(dist, half):
-    global grey_gate_queue
-    grey_gate_queue = deque()
-
-    grey_code(dist, half)
-
-    long_range_gates = []
-    for gate in grey_gate_queue:
-        if gate == "RZ": continue
-        if gate[1] - gate[0] > 1: long_range_gates.append(gate)
-    
-    return long_range_gates
-
-def cancel_or_append(cnot, size):
-    global state
-    global gate_queue
-    global discovered_pp_terms
-    global pp_terms
-
-    prev_gate = gate_queue.pop()
-
-    if prev_gate != cnot:
-        gate_queue.append(prev_gate)
-        gate_queue.append(cnot)
-    
-    if cnot[1] == size and state[size] in pp_terms and state[size] not in discovered_pp_terms:
-        discovered_pp_terms.add(state[size])
-        gate_queue.append("RZ")
-
-def long_range_cnot(dist, size):
-    global state
-    offset = size - dist
-    
-    for i in range(dist):
-        i_f = i + offset
-        state[i_f + 1] = state[i_f + 1] ^ state[i_f]
-        cancel_or_append((i_f, i_f+1), size)
-    for j in range(dist - 1, 0, -1):
-        j_f = j + offset
-        state[j_f] = state[j_f] ^ state[j_f - 1]
-        cancel_or_append((j_f - 1, j_f), size)
-    for k in range(1, dist):
-        k_f = k + offset
-        state[k_f + 1] = state[k_f + 1] ^ state[k_f]
-        cancel_or_append((k_f, k_f + 1), size)
-    for l in range(dist - 1, 1, -1):
-        l_f = l + offset
-        state[l_f] = state[l_f] ^ state[l_f - 1]
-        cancel_or_append((l_f - 1, l_f), size)
-
-def reverse_long_range_cnot(dist, size):
-    global state
-    offset = size - dist
-
-    for l in reversed(range(dist - 1, 1, -1)):
-        l_f = l + offset
-        state[l_f] = state[l_f] ^ state[l_f - 1]
-        cancel_or_append((l_f - 1, l_f), size)
-    for k in reversed(range(1, dist)):
-        k_f = k + offset
-        state[k_f + 1] = state[k_f + 1] ^ state[k_f]
-        cancel_or_append((k_f, k_f + 1), size)
-    for j in reversed(range(dist - 1, 0, -1)):
-        j_f = j + offset
-        state[j_f] = state[j_f] ^ state[j_f - 1]
-        cancel_or_append((j_f - 1, j_f), size)
-    for i in reversed(range(dist)):
-        i_f = i + offset
-        state[i_f + 1] = state[i_f + 1] ^ state[i_f]
-        cancel_or_append((i_f, i_f + 1), size)
+from utils import get_grey_gates
 
 
 class RoutedMultiplexor(object):
@@ -121,18 +36,8 @@ class RoutedMultiplexor(object):
 
         return neighbors
     
-    #Next, find shortest paths form root to all qubits. If there are multiple shortest paths, select the one which intersects the most with other paths.
-
-    #Then, calculate the grey gates and map the grey qubits to the architecture accordignly. The nearest qubit to the root in the grey circuit should be mapped to to the path which
-    # includes the furthest node. Rest should be mapped such that we minimize the amount of long range CNOTS.
-
-    #After that, modify the long range cnot functions so that they apply the correct cnots.
-
-    #Then, apply the algorithm, checking whether a cnot is needed and otherwise executing long range cnots according to the grey gates.
-
-    #Finally, make sure everything works and start benchmarking.
     
-    def find_optimal_paths(self):
+    def find_optimal_neighborhood(self):
         optimal_neighborhoods = []
         best_dist_cost = 2 ** 31
 
@@ -178,11 +83,144 @@ class RoutedMultiplexor(object):
             elif dist_cost == best_dist_cost:
                 optimal_neighborhoods.append(paths)
 
-        print(best_dist_cost)
-        for neighborhood in optimal_neighborhoods:
-            print(neighborhood)
+        return optimal_neighborhoods
 
-    def draw_backend(self, planar = False):
+    def map_grey_qubits_to_arch(self):
+        optimal_neighborhood = self.find_optimal_neighborhood()[0]
+        self.optimal_neighborhood = optimal_neighborhood.copy()
+        furthest_node_path = list(optimal_neighborhood.values())[-1]
+
+        furthest_node = furthest_node_path[-1]
+        closest_node = furthest_node_path[1]
+        root = furthest_node_path[0]
+        self.root = root
+        self.closest_node = closest_node
+
+        grey_to_arch_map = {}
+        grey_to_arch_map[self.num_controls] = root
+        grey_to_arch_map[self.num_controls-1] = closest_node
+        grey_to_arch_map[0] = furthest_node
+
+        optimal_neighborhood.pop(root)
+        optimal_neighborhood.pop(closest_node)
+
+        if optimal_neighborhood.get(furthest_node) != None:
+            optimal_neighborhood.pop(furthest_node)
+            offset = 2
+        else: 
+            offset = 1
+
+        for key, grey_key in zip(list(optimal_neighborhood.keys()), range(self.num_controls - offset, 0, -1)):
+            grey_to_arch_map[grey_key] = key
+        
+        self.grey_to_arch_map = grey_to_arch_map
+
+        self.arch_to_grey_map = {}
+
+        for key, value in self.grey_to_arch_map.items():
+            self.arch_to_grey_map[value] = key
+
+    
+    def cancel_or_append(self, cnot, ignore):
+        prev_gate = self.gate_queue.pop()
+
+        if prev_gate != cnot:
+            self.gate_queue.append(prev_gate)
+            self.gate_queue.append(cnot)
+        
+        if cnot[1] == self.num_controls and self.state[self.num_controls] in self.pp_terms and self.state[self.num_controls] not in self.discovered_pp_terms:
+            self.discovered_pp_terms.add(self.state[self.num_controls])
+            self.gate_queue.append("RZ")
+        elif cnot[1] == self.num_controls and ignore and self.state[self.num_controls] in self.pp_terms and self.state[self.num_controls] in self.discovered_pp_terms:
+            self.gate_queue.pop()
+            self.state[cnot[1]] ^= self.state[cnot[0]]
+    
+    def long_range_cnot(self, arch_path, ignore = False):
+
+        grey_path = list(reversed(list(map(lambda arch_qubit: self.arch_to_grey_map[arch_qubit], arch_path))))
+        grey_path_dist = len(grey_path)
+        for i in range(grey_path_dist - 1):
+            self.state[grey_path[i + 1]] ^= self.state[grey_path[i]]
+            self.cancel_or_append((grey_path[i], grey_path[i + 1]), ignore)
+
+        for j in range(grey_path_dist - 2, 0, -1):
+            self.state[grey_path[j]] ^= self.state[grey_path[j - 1]]
+            self.cancel_or_append((grey_path[j - 1], grey_path[j]), ignore)
+
+        for k in range(1, grey_path_dist - 1):
+            self.state[grey_path[k + 1]] ^= self.state[grey_path[k]]
+            self.cancel_or_append((grey_path[k], grey_path[k + 1]), ignore)
+
+        for l in range(grey_path_dist - 2, 1, -1):
+            self.state[grey_path[l]] ^= self.state[grey_path[l - 1]]
+            self.cancel_or_append((grey_path[l - 1], grey_path[l]), ignore)
+
+    def execute_gates(self):
+        self.map_grey_qubits_to_arch()
+        grey_gates = get_grey_gates(self.num_controls, False, True)
+
+        self.pp_terms = set([x for x in range(2 ** self.num_controls, 2 ** self.num_qubits)])
+        self.discovered_pp_terms = set([2 ** self.num_controls])
+        self.state = {q: 1 << q for q in range(self.num_qubits)}
+        init_state = self.state.copy()
+
+
+        self.gate_queue = deque()
+        self.gate_queue.append("RZ")
+        print(init_state)
+        for gate in grey_gates:
+            ctrl_qubit = gate[0]
+            arch_qubit = self.grey_to_arch_map[ctrl_qubit]
+            arch_path = self.optimal_neighborhood[arch_qubit]
+            dist = len(arch_path) - 1
+
+            ignore = False if dist > 1 else True
+            self.long_range_cnot(arch_path, ignore)
+        
+
+
+        if init_state != self.state:
+            print(self.state)
+            if self.state[self.num_controls] ^ self.state[self.num_controls - 1] == init_state[self.num_controls]:
+                ctrl_qubit = self.num_controls - 1
+            else:
+                ctrl_qubit = 0
+            arch_qubit = self.grey_to_arch_map[ctrl_qubit]
+            arch_path = self.optimal_neighborhood[arch_qubit]
+            self.long_range_cnot(arch_path, False)
+
+        print(self.state)
+        circuit_length = len([gate for gate in self.gate_queue if gate != "RZ"])
+        print(f"Found {len(self.discovered_pp_terms)}/{len(self.pp_terms)} phase polynomial terms.")
+        print(f"Circuit length: {circuit_length}")
+
+        if self.state != init_state:
+            print("State was not reset correctly!")
+
+    def map_grey_gates_to_arch(self):
+        self.execute_gates()
+        grey_gates = self.gate_queue.copy()
+        arch_gates = deque()
+
+        while True:
+            try:
+                grey_gate = grey_gates.popleft()
+                if grey_gate != "RZ":
+                    arch_gate = (self.grey_to_arch_map[grey_gate[0]], self.grey_to_arch_map[grey_gate[1]])
+                else:
+                    arch_gate = grey_gate
+                arch_gates.append(arch_gate)
+            except Exception as e:
+                break
+
+        self.arch_gates = arch_gates
+        return arch_gates
+    
+    def run(self):
+        self.map_grey_gates_to_arch()
+
+
+    def draw_backend(self, planar = False, filename = None):
         G = nx.Graph()
         G.add_edges_from(self.coupling_map)
 
@@ -190,13 +228,38 @@ class RoutedMultiplexor(object):
         if planar:
             is_planar, embedding = nx.check_planarity(G)
             pos = nx.combinatorial_embedding_to_pos(embedding)
-            nx.draw(G, pos, with_labels=True, node_color="lightblue", node_size=600)
+            nx.draw(G, pos, with_labels=True)
+            if filename != None:
+                plt.savefig(f"./coupling_maps/{filename}.png", format="PNG")
             plt.show()
         else:
-            fig = plt.subplot()
             nx.draw(G, with_labels=True, font_weight='bold')
-
+            if filename != None:
+                plt.savefig(f"./coupling_maps/{filename}.png", format="PNG")
             plt.show()
+
+    def draw_circuit(self, arch = False, filename = None):
+        if not arch:
+            qc = QuantumCircuit(self.num_qubits)
+        else: 
+            qubits = [QuantumRegister(1, name=f'q{i}') for i in range(1, len(self.vertices) + 1)]
+            qc = QuantumCircuit(*qubits)
+
+        phi = Parameter("θ")
+        gates = self.gate_queue if not arch else self.arch_gates
+        
+
+        for gate in gates:
+            if gate == "RZ":
+                qc.rz(phi, self.num_controls) if not arch else qc.rz(phi, self.root - 1)
+            else:
+                qc.cx(gate[0], gate[1]) if not arch else qc.cx(gate[0] - 1, gate[1] - 1)
+        if filename != None:
+            fig = qc.draw(output="mpl", interactive=True, filename=filename)
+        else:
+            fig = qc.draw(output="mpl", interactive=True)
+
+        plt.show()
 
     def find_highest_degree_nodes(self):
         neighbors = {}
@@ -231,13 +294,17 @@ class RoutedMultiplexor(object):
 
 if __name__ == "__main__":
     num_qubits = int(sys.argv[1])
+    assert num_qubits > 1
 
     with open(f"coupling_maps/fake_garnet.json") as f:
         fake_garnet = json.load(f)
 
     fake_cairo = FakeCairoV2()
 
-    routed_multiplexor = RoutedMultiplexor(coupling_map=fake_garnet, num_qubits=num_qubits)
-    routed_multiplexor.find_optimal_paths()
+    routed_multiplexor = RoutedMultiplexor(coupling_map=fake_cairo.coupling_map, num_qubits=num_qubits)
+    routed_multiplexor.run()
 
-    routed_multiplexor.draw_backend()
+    # routed_multiplexor.draw_circuit(arch=True, filename=f"./circuits/final/cairo_{num_qubits}_qubits.png")
+    # routed_multiplexor.draw_circuit(arch=True)
+    print(routed_multiplexor.optimal_neighborhood)
+    # routed_multiplexor.draw_backend(planar=False, filename="cairo_coupling_map")
