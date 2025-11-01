@@ -9,7 +9,8 @@ import math
 from functools import reduce
 import json
 from utils import get_grey_gates
-
+import numpy as np
+from gray_synth import synth_cnot_phase_aam
 
 class RoutedMultiplexor(object):
     def __init__(self, multiplexor = None, coupling_map = None, num_qubits = 5):
@@ -155,6 +156,44 @@ class RoutedMultiplexor(object):
             self.state[grey_path[l]] ^= self.state[grey_path[l - 1]]
             self.cancel_or_append((grey_path[l - 1], grey_path[l]), ignore)
 
+    def reset_state(self):
+        for i in range(self.num_controls):
+            if (self.state[self.num_controls] >> i) & 1 == 1: 
+                arch_qubit = self.grey_to_arch_map[i]
+                arch_path = self.optimal_neighborhood[arch_qubit]
+                self.long_range_cnot(arch_path, False)
+
+    def find_missing_terms(self, unfound_terms):
+        parity_matrix = []
+        for term in unfound_terms:
+            temp = []
+            for i in range(self.num_qubits):
+                if (term >> i) & 1 == 1: temp.append(1)
+                else: temp.append(0)
+
+            parity_matrix.append(temp)
+
+        parity_matrix = list(np.array(parity_matrix).transpose())
+        for i in range(len(parity_matrix)):
+            parity_matrix[i] = list(parity_matrix[i])
+
+        angles = [0.123 for x in range(len(parity_matrix[0]))]
+        qc = synth_cnot_phase_aam(parity_matrix, angles)
+
+        synth_cnots = deque()
+        for instruction in qc.data:
+            indices = [qc.find_bit(q).index for q in instruction.qubits]
+            if len(indices) > 1: synth_cnots.append((indices[0], indices[1]))
+
+        for gate in synth_cnots:
+            ctrl_qubit = gate[0]
+            arch_qubit = self.grey_to_arch_map[ctrl_qubit]
+            arch_path = self.optimal_neighborhood[arch_qubit]
+            dist = len(arch_path) - 1
+
+            ignore = False if dist > 1 else True
+            self.long_range_cnot(arch_path, False)
+
     def execute_gates(self):
         self.map_grey_qubits_to_arch()
         grey_gates = get_grey_gates(self.num_controls, False, True)
@@ -167,7 +206,6 @@ class RoutedMultiplexor(object):
 
         self.gate_queue = deque()
         self.gate_queue.append("RZ")
-        print(init_state)
         for gate in grey_gates:
             ctrl_qubit = gate[0]
             arch_qubit = self.grey_to_arch_map[ctrl_qubit]
@@ -180,16 +218,14 @@ class RoutedMultiplexor(object):
 
 
         if init_state != self.state:
-            print(self.state)
-            if self.state[self.num_controls] ^ self.state[self.num_controls - 1] == init_state[self.num_controls]:
-                ctrl_qubit = self.num_controls - 1
-            else:
-                ctrl_qubit = 0
-            arch_qubit = self.grey_to_arch_map[ctrl_qubit]
-            arch_path = self.optimal_neighborhood[arch_qubit]
-            self.long_range_cnot(arch_path, False)
+            self.reset_state()
 
-        print(self.state)
+        unfound_terms = self.pp_terms - self.discovered_pp_terms
+
+        if len(unfound_terms) > 0:
+            self.find_missing_terms(unfound_terms)
+
+
         circuit_length = len([gate for gate in self.gate_queue if gate != "RZ"])
         print(f"Found {len(self.discovered_pp_terms)}/{len(self.pp_terms)} phase polynomial terms.")
         print(f"Circuit length: {circuit_length}")
@@ -306,5 +342,5 @@ if __name__ == "__main__":
 
     # routed_multiplexor.draw_circuit(arch=True, filename=f"./circuits/final/cairo_{num_qubits}_qubits.png")
     # routed_multiplexor.draw_circuit(arch=True)
-    print(routed_multiplexor.optimal_neighborhood)
-    # routed_multiplexor.draw_backend(planar=False, filename="cairo_coupling_map")
+    # print(routed_multiplexor.optimal_neighborhood)
+    # routed_multiplexor.draw_backend(planar=False, filename="garnet_coupling_map")
