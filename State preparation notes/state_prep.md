@@ -71,3 +71,7 @@ https://arxiv.org/pdf/2505.06054
 
 Better QSD:
 https://arxiv.org/pdf/2403.13692+
+
+
+Steiner synth Github repo:
+https://github.com/hashberg-io/pauliopt

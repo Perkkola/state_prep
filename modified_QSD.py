@@ -15,32 +15,6 @@ def clean_matrix(M):
 I = np.eye(2)
 Z_4 = np.zeros((4, 4))
 
-X = np.array([[0, 1],
-            [1, 0]])
-
-CX = np.array([[1, 0, 0, 0],
-               [0, 0, 0, 1],
-               [0, 0, 1, 0],
-               [0, 1, 0 ,0]])
-
-XC = np.array([[1, 0, 0, 0],
-               [0, 1, 0, 0],
-               [0, 0, 0, 1],
-               [0, 0, 1, 0]])
-
-X_I_I = np.kron(X, np.kron(I, I))
-I_X_I = np.kron(I, np.kron(X, I))
-I_I_X = np.kron(I, np.kron(I, X))
-X_X_I = np.kron(X, np.kron(X, I))
-I_X_X = np.kron(I, np.kron(X, X))
-X_I_X = np.kron(X, np.kron(I, X))
-X_X_X = np.kron(X, np.kron(X, X))
-
-CX_I = np.kron(CX, I)
-XC_I = np.kron(XC, I)
-I_CX = np.kron(I, CX)
-I_XC = np.kron(I, XC)
-
 U = np.array([[ 0.62923587, -0.27810894,  0.06225542 , 0.32819821,  0.21411186, -0.26067223, -0.16945149 , 0.52213037],
              [-0.12832786, -0.72115181 , 0.06330487 ,-0.25546329  ,0.1811286,  -0.15270451, 0.58015675, -0.03866454],
              [ 0.14146621, 0.33503048 , 0.63506461,  0.14609694, -0.17964295 , 0.2131513, 0.56863418,  0.20503807],
@@ -69,28 +43,17 @@ block_diag = np.block([[diag, Z_4],
 I_V = np.kron(I, V)
 I_W = np.kron(I, W)
 
+# print(block_diag)
+
+def extract_single_qubit_unitaries(mat):
+    for i in range(0, len(mat), 2):
+        yield mat[i:i+2, i:i+2]
+
+
+it = list(extract_single_qubit_unitaries(block_diag))
+
 print(block_diag)
-
-A = np.array([[-1j, 0, 0, 0],
-              [0, -np.conj(block_diag[1, 1]), 0, 0],
-              [0, 0, block_diag[1, 1] * np.conj(block_diag[2, 2]), 0],
-              [0, 0, 0, np.conj(block_diag[1, 1])]])
-
-I_A = np.kron(I, A)
-
-# print(clean_matrix(I_A @ block_diag))
-
-new_diag = np.array([[np.sqrt(block_diag[0, 0] * np.conj(block_diag[1, 1])), 0, 0, 0, 0, 0, 0, 0],
-                     [0, np.conj(np.sqrt(block_diag[0, 0] * np.conj(block_diag[1, 1]))), 0, 0, 0, 0, 0, 0],
-                     [0, 0, np.sqrt(block_diag[2, 2] * np.conj(block_diag[3, 3])), 0, 0, 0, 0, 0],
-                     [0, 0, 0, np.conj(np.sqrt(block_diag[2, 2] * np.conj(block_diag[3, 3]))), 0, 0, 0, 0],
-                     [0, 0, 0, 0, np.sqrt(block_diag[4, 4] * np.conj(block_diag[5, 5])), 0, 0, 0],
-                     [0, 0, 0, 0, 0, np.conj(np.sqrt(block_diag[4, 4] * np.conj(block_diag[5, 5]))), 0, 0],
-                     [0, 0, 0, 0, 0, 0, np.sqrt(block_diag[6, 6] * np.conj(block_diag[7, 7])), 0],
-                     [0, 0, 0, 0, 0, 0, 0, np.conj(np.sqrt(block_diag[6, 6] * np.conj(block_diag[7, 7])))]])
-
-print(new_diag)
-
-# print(clean_matrix(block_diag))
-# print(clean_matrix(I_diag_1_dgr @ block_diag))
+# print(clean_matrix(I_V @ block_diag @ I_W))
+# print(u_1)
+# print(u_2)
 

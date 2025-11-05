@@ -227,11 +227,15 @@ class RoutedMultiplexor(object):
 
 
         circuit_length = len([gate for gate in self.gate_queue if gate != "RZ"])
-        print(f"Found {len(self.discovered_pp_terms)}/{len(self.pp_terms)} phase polynomial terms.")
-        print(f"Circuit length: {circuit_length}")
+
+        if len(self.discovered_pp_terms) != len(self.pp_terms):
+            print(f"Found {len(self.discovered_pp_terms)}/{len(self.pp_terms)} phase polynomial terms.")
 
         if self.state != init_state:
             print("State was not reset correctly!")
+        
+        return circuit_length
+
 
     def map_grey_gates_to_arch(self):
         self.execute_gates()
@@ -254,6 +258,7 @@ class RoutedMultiplexor(object):
     
     def run(self):
         self.map_grey_gates_to_arch()
+
 
 
     def draw_backend(self, planar = False, filename = None):
