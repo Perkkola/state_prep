@@ -10,10 +10,18 @@ def grey_code(dist, half):
         grey_gate_queue.append("RZ")
         grey_gate_queue.append((dist - highest_index_diff, dist))
 
-def get_grey_gates(dist, half, all_gates = True):
-    global grey_gate_queue
-    grey_gate_queue = deque()
+        grey_state_queue.append(grey_state[dist])
+        grey_state[dist] ^= grey_state[dist - highest_index_diff]
 
+def get_grey_gates(dist, half = False, all_gates = True, state_queue = False):
+    global grey_gate_queue
+    global grey_state
+    global grey_state_queue
+
+    grey_gate_queue = deque()
+    grey_state_queue = deque()
+    grey_state = {q: 1 << q for q in range(dist + 1)}
+    
     grey_code(dist, half)
 
     long_range_gates = []
@@ -22,4 +30,7 @@ def get_grey_gates(dist, half, all_gates = True):
         if gate[1] - gate[0] > 1 and not all_gates: long_range_gates.append(gate)
         elif all_gates: long_range_gates.append(gate)
     
-    return long_range_gates
+    if state_queue:
+        return long_range_gates, grey_state_queue
+    else:
+        return long_range_gates

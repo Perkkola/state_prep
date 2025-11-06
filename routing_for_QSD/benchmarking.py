@@ -1,5 +1,5 @@
 from qiskit.circuit import QuantumCircuit, QuantumRegister
-from qiskit.circuit.library import UCGate
+from qiskit.circuit.library import UCGate, Permutation
 from qiskit.compiler import transpile
 from qiskit_aer import Aer, AerSimulator
 from qiskit_ibm_runtime.fake_provider import FakeCairoV2
@@ -9,6 +9,11 @@ import sys
 import json
 from utils import get_grey_gates
 from architecture_aware_routing import RoutedMultiplexor
+from pauliopt.pauliopt.phase.phase_circuits import PhaseGadget, PhaseCircuit, Z, X
+from pauliopt.pauliopt.phase.optimized_circuits import OptimizedPhaseCircuit
+from pauliopt.pauliopt.topologies import Topology
+from pauliopt.pauliopt.utils import pi
+import matplotlib.pyplot as plt
 
 class QiskitBase(object):
     def __init__(self, num_qubits, coupling_map = None):
@@ -70,6 +75,60 @@ class QiskitGray(QiskitBase):
         return qc
 
 
+class SteinerSynth(object):
+    def __init__(self, num_qubits, coupling_map = None):
+        self.num_qubits = num_qubits
+        self.num_controls = self.num_qubits - 1
+        self.coupling_map = coupling_map
+        
+
+    def draw_circuit(self, circuit, *args, **kwargs):
+        draw_kwargs = {"output": "mpl", "interactive": True}
+        qc = circuit.to_qiskit(*args, **kwargs)
+        if qc.metadata:
+            if "initial_layout" in qc.metadata:
+                init_mapping = qc.metadata["initial_layout"]
+                qc.compose(Permutation(qc.num_qubits, init_mapping), front=True, inplace=True)
+            if "final_layout" in qc.metadata:
+                final_mapping = qc.metadata["final_layout"]
+                qc.compose(Permutation(qc.num_qubits, final_mapping), front=False, inplace=True)
+        print("Number of CNOTs:", qc.count_ops()['cx'] if qc.count_ops().get('cx') != None else 0)
+        qc.draw(**draw_kwargs)
+        plt.show()
+
+    def generate_circuit(self):
+        circuit = PhaseCircuit(self.num_qubits)
+
+        if self.coupling_map == None:
+            topology = Topology.complete(self.num_qubits)
+        else:
+            shifted_coupling_map = []
+            shift = True
+            num_arch_qubits = 0
+
+            for edge in self.coupling_map:
+                if edge[0] == 0 or edge[1] == 0: 
+                    shift = False
+                if edge[0] > num_arch_qubits: num_arch_qubits = edge[0]
+                if edge[1] > num_arch_qubits: num_arch_qubits = edge[1]
+                shifted_coupling_map.append([edge[0] - 1, edge[1] - 1])
+            
+            if shift: self.coupling_map = shifted_coupling_map
+            else: num_arch_qubits += 1
+
+            # topology = Topology(num_arch_qubits, self.coupling_map)
+            topology = Topology(6, [[0, 1], [1, 2], [1, 3], [3, 4], [4, 5]])
+
+        grey_gates, state_queue = get_grey_gates(self.num_controls, state_queue=True)
+
+        for state in state_queue:
+            gadget_qubits = set()
+            for i in range(self.num_qubits):
+                if (state >> i) & 1 == 1 : gadget_qubits.add(i)
+            circuit >>= Z(pi/5) @ gadget_qubits
+
+        opt = OptimizedPhaseCircuit(circuit.copy(), topology, 3, phase_method="steiner-graysynth", cx_method="permrowcol",reallocate=True)
+        self.draw_circuit(opt, topology)
 
 
 if __name__ == "__main__":
@@ -90,6 +149,9 @@ if __name__ == "__main__":
         case _:
             coupling_map = None
 
+    sg = SteinerSynth(num_qubits, coupling_map)
+    sg.generate_circuit()
+    exit()
     qn = QiskitNative(num_qubits, coupling_map)
     qc = qn.generate_circuit(mux_simp=True, routed=True)
     qn_cx_count = qn.count_cx(qc)
@@ -101,6 +163,8 @@ if __name__ == "__main__":
     proposed = RoutedMultiplexor(coupling_map=coupling_map, num_qubits=num_qubits)
     p_cx_count = proposed.execute_gates()
 
-    print(f"Qiskit native UCGate CX count: {qn_cx_count}")
-    print(f"Qiskit with grey code multiplexor CX count: {qg_cx_count}")
-    print(f"Proposed method CX count: {p_cx_count}")
+
+    
+    # print(f"Qiskit native UCGate CX count: {qn_cx_count}")
+    # print(f"Qiskit with grey code multiplexor CX count: {qg_cx_count}")
+    # print(f"Proposed method CX count: {p_cx_count}")
