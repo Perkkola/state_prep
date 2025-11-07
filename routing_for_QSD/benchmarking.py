@@ -9,11 +9,13 @@ import sys
 import json
 from utils import get_grey_gates
 from architecture_aware_routing import RoutedMultiplexor
-from pauliopt.pauliopt.phase.phase_circuits import PhaseGadget, PhaseCircuit, Z, X
-from pauliopt.pauliopt.phase.optimized_circuits import OptimizedPhaseCircuit
-from pauliopt.pauliopt.topologies import Topology
-from pauliopt.pauliopt.utils import pi
+from pauliopt.phase.phase_circuits import PhaseGadget, PhaseCircuit, Z, X
+from pauliopt.phase.optimized_circuits import OptimizedPhaseCircuit
+from pauliopt.topologies import Topology
+from pauliopt.utils import pi
 import matplotlib.pyplot as plt
+import warnings
+warnings.filterwarnings("ignore", category=DeprecationWarning)
 
 class QiskitBase(object):
     def __init__(self, num_qubits, coupling_map = None):
@@ -92,11 +94,13 @@ class SteinerSynth(object):
             if "final_layout" in qc.metadata:
                 final_mapping = qc.metadata["final_layout"]
                 qc.compose(Permutation(qc.num_qubits, final_mapping), front=False, inplace=True)
-        print("Number of CNOTs:", qc.count_ops()['cx'] if qc.count_ops().get('cx') != None else 0)
-        qc.draw(**draw_kwargs)
-        plt.show()
-
-    def generate_circuit(self):
+        num_cx = qc.count_ops()['cx'] if qc.count_ops().get('cx') != None else 0
+        # print("Number of CNOTs:", num_cx)
+        # qc.draw(**draw_kwargs)
+        # plt.show()
+        return num_cx
+    
+    def generate_circuit(self, grey_to_arch_map = None):
         circuit = PhaseCircuit(self.num_qubits)
 
         if self.coupling_map == None:
@@ -116,19 +120,19 @@ class SteinerSynth(object):
             if shift: self.coupling_map = shifted_coupling_map
             else: num_arch_qubits += 1
 
-            # topology = Topology(num_arch_qubits, self.coupling_map)
-            topology = Topology(6, [[0, 1], [1, 2], [1, 3], [3, 4], [4, 5]])
+            topology = Topology(num_arch_qubits, self.coupling_map)
+            circuit = PhaseCircuit(num_arch_qubits)
 
         grey_gates, state_queue = get_grey_gates(self.num_controls, state_queue=True)
 
         for state in state_queue:
             gadget_qubits = set()
             for i in range(self.num_qubits):
-                if (state >> i) & 1 == 1 : gadget_qubits.add(i)
+                if (state >> i) & 1 == 1 and grey_to_arch_map != None: gadget_qubits.add(grey_to_arch_map[i] - 1)
+                elif (state >> i) & 1 == 1: gadget_qubits.add(i)
             circuit >>= Z(pi/5) @ gadget_qubits
-
         opt = OptimizedPhaseCircuit(circuit.copy(), topology, 3, phase_method="steiner-graysynth", cx_method="permrowcol",reallocate=True)
-        self.draw_circuit(opt, topology)
+        return self.draw_circuit(opt, topology)
 
 
 if __name__ == "__main__":
@@ -149,22 +153,24 @@ if __name__ == "__main__":
         case _:
             coupling_map = None
 
-    sg = SteinerSynth(num_qubits, coupling_map)
-    sg.generate_circuit()
-    exit()
-    qn = QiskitNative(num_qubits, coupling_map)
-    qc = qn.generate_circuit(mux_simp=True, routed=True)
-    qn_cx_count = qn.count_cx(qc)
+    # qn = QiskitNative(num_qubits, coupling_map)
+    # qc = qn.generate_circuit(mux_simp=True, routed=True)
+    # qn_cx_count = qn.count_cx(qc)
 
-    qg = QiskitGray(num_qubits, coupling_map)
-    qc2 = qg.generate_circuit(routed=True)
-    qg_cx_count = qg.count_cx(qc2)
+    # qg = QiskitGray(num_qubits, coupling_map)
+    # qc2 = qg.generate_circuit(routed=True)
+    # qg_cx_count = qg.count_cx(qc2)
 
     proposed = RoutedMultiplexor(coupling_map=coupling_map, num_qubits=num_qubits)
     p_cx_count = proposed.execute_gates()
+    grey_to_arch_map = proposed.grey_to_arch_map
+
+    sg = SteinerSynth(num_qubits, coupling_map)
+    sg_cx_count = sg.generate_circuit(grey_to_arch_map=grey_to_arch_map)
 
 
     
     # print(f"Qiskit native UCGate CX count: {qn_cx_count}")
     # print(f"Qiskit with grey code multiplexor CX count: {qg_cx_count}")
-    # print(f"Proposed method CX count: {p_cx_count}")
+    print(f"Steiner-Gray CX count: {sg_cx_count}")
+    print(f"Proposed method CX count: {p_cx_count}")

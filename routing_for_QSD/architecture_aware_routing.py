@@ -21,8 +21,8 @@ class RoutedMultiplexor(object):
         self.num_qubits = num_qubits if self.multiplexor == None else math.log2(len(multiplexor))
         self.num_controls = self.num_qubits - 1
 
-        self.neighbors = self.get_neighbors()
-        self.vertices = self.neighbors.copy().keys()
+        self.neighbors = self.get_neighbors() if self.coupling_map != None else None
+        self.vertices = self.neighbors.copy().keys() if self.neighbors != None else None
 
         assert len(self.vertices) >= self.num_qubits
     
