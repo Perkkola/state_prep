@@ -18,11 +18,15 @@ class RoutedMultiplexor(object):
 
         self.multiplexor = multiplexor
         self.coupling_map = coupling_map
+
+
         self.num_qubits = num_qubits if self.multiplexor == None else math.log2(len(multiplexor))
         self.num_controls = self.num_qubits - 1
 
-        self.neighbors = self.get_neighbors() if self.coupling_map != None else None
-        self.vertices = self.neighbors.copy().keys() if self.neighbors != None else None
+        if self.coupling_map == None: self.coupling_map = [[x, y] for x in range(self.num_qubits) for y in range(self.num_qubits) if x != y]
+
+        self.neighbors = self.get_neighbors()
+        self.vertices = self.neighbors.copy().keys()
 
         assert len(self.vertices) >= self.num_qubits
     
