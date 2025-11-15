@@ -82,14 +82,17 @@ def extract_single_qubit_unitaries(mat):
         second = mat[half + j][half + j]
         yield np.diag([first, second])
 
-def extract_angles(mat):
-    half = len(mat) // 2
-    for i in range(half):
-        j = int((f"{{:0>{int(math.log2(half))}b}}".format(i))[::-1], 2)
-        value = mat[i][i]
+def extract_angles(unitaries):
+    for unitary in unitaries:
+        value = unitary[0][0]
+
         if value > 1: value = 1
         elif value < -1: value = -1
-        yield math.acos(np.real(value))
+
+        ang = math.acos(np.real(value))
+
+        if np.round(math.sin(ang), 5) == np.round(np.imag(value), 5): ang = -ang
+        yield ang
 
 def clean_matrix(M):
     M = M.copy()

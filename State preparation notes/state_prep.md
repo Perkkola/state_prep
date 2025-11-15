@@ -75,3 +75,7 @@ https://arxiv.org/pdf/2403.13692+
 
 Steiner synth Github repo:
 https://github.com/hashberg-io/pauliopt
+
+
+Possibly faster method for Cosine-Sine decomposition:
+https://www.sciencedirect.com/science/article/pii/S0024379518300843?via%3Dihub

@@ -38,7 +38,7 @@ class QiskitBase(object):
 
     def random_rz_generator(self):
         for _ in range(2 ** self.num_controls):
-            phi = np.random.random() * np.pi - 0.00123
+            phi = np.random.random() * 2 * np.pi - np.pi
             yield np.array([[math.cos(phi) + 1j*math.sin(phi), 0],
                         [0, math.cos(phi) - 1j*math.sin(phi)]])
 
@@ -86,7 +86,7 @@ class QiskitNative(QiskitBase):
 
 
         qc = qc.decompose(reps=4)
-        self.print_unitary(qc)
+        # self.print_unitary(qc)
 
         if self.coupling_map != None:
             qc_opt = transpile(qc, optimization_level=3, coupling_map=self.coupling_map, basis_gates=['cx', 'h', 'x', 'rz', 'rx', 'ry'])
@@ -104,7 +104,7 @@ class QiskitGray(QiskitBase):
         grey_gates = get_grey_gates(self.num_controls, False, True)
         qc = QuantumCircuit(self.num_qubits)
         for gate in grey_gates:
-            qc.rz(np.random.random() * np.pi - 0.00123, self.num_controls)
+            qc.rz(np.random.random() * 2 * np.pi - np.pi, self.num_controls)
             qc.cx(gate[0], gate[1])
 
         qc = qc.decompose(reps=4)
@@ -212,7 +212,7 @@ class TketBase(object):
     def random_angle_generator(self):
         for i in range(2 ** self.num_controls):
             if i % 2 == 0:
-                phi = np.random.random() * np.pi - 0.00123
+                phi = np.random.random() * 2 * np.pi - np.pi
                 yield phi
             else:
                 yield phi
@@ -239,18 +239,20 @@ class TketNative(TketBase):
             angles = list(self.random_angle_generator())
         else:
             angles = self.multiplexer
-            # angles = [2*x for x in angles]
+            angles = [(2 * x) / np.pi for x in angles]
+
         multiplexor = MultiplexedRotationBox(angles, OpType.Rz)
         qc.add_gate(multiplexor, [x for x in range(self.num_qubits)])
 
-        print(clean_matrix(qc.get_unitary()))
-
-        self.print_unitary(qc)
+        # print(clean_matrix(qc.get_unitary()))
 
         if self.backend != None:
             self.backend.default_compilation_pass(optimisation_level=2).apply(qc)
 
         return qc
+    
+    def construct_multiplexer_map(self, multiplexer):
+        pass
 
 
 if __name__ == "__main__":
@@ -259,8 +261,9 @@ if __name__ == "__main__":
     assert num_qubits > 1
 
     multiplexor_unitary = generate_random_rz_multiplexer_unitary(num_qubits)
+
     single_qubit_unitaries = list(extract_single_qubit_unitaries(multiplexor_unitary))
-    angles = list(extract_angles(multiplexor_unitary))
+    angles = list(extract_angles(single_qubit_unitaries))
 
     coupling_map = None
     backend = None
@@ -290,8 +293,8 @@ if __name__ == "__main__":
             coupling_map = None
             backend = None
 
-    print(multiplexor_unitary)
-    print("///////////////////")
+    # print(multiplexor_unitary)
+    # print("///////////////////")
     qn = QiskitNative(num_qubits, coupling_map, single_qubit_unitaries)
     qc = qn.generate_circuit(mux_simp=False)
     qn_cx_count = qn.count_cx(qc)
