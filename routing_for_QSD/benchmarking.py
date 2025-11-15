@@ -25,9 +25,9 @@ import warnings
 
 warnings.filterwarnings("ignore", category=DeprecationWarning)
 
-IQM_TOKEN = "3BGYdJuhl8pAeYUNcJ3b9r6r2CtXuGPHdjwA1StOaGUBmnyXrB9+EKROdY4Q4p4w"
-IBM_TOKEN = 'u_k47sVdjZ8QvxY5bUj-PQRM2h_CNU8jcIh6RxJG_7Jg'
-IBM_INSTANCE = 'crn:v1:bluemix:public:quantum-computing:us-east:a/14c391407c20401a8dc347e17f51ba83:7d2deb88-e3a6-4315-8ca8-e936c1009807::'
+IQM_TOKEN = None
+IBM_TOKEN = None
+IBM_INSTANCE = None
 
 class QiskitBase(object):
     def __init__(self, num_qubits, coupling_map = None, multiplexer = None):
