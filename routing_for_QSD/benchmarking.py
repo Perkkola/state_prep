@@ -13,7 +13,9 @@ import numpy as np
 import math 
 import sys
 import json
-from utils import get_grey_gates, generate_random_rz_multiplexer_unitary, extract_single_qubit_unitaries, extract_angles, clean_matrix
+import time
+from utils import get_grey_gates, generate_random_rz_multiplexer_unitary, extract_single_qubit_unitaries, extract_angles, clean_matrix, generate_U,cossin_scipy, cossin_from_scratch
+from vibe_csd import compute_csd_corollary31
 from architecture_aware_routing import RoutedMultiplexor
 from pauliopt.phase.phase_circuits import PhaseGadget, PhaseCircuit, Z, X
 from pauliopt.phase.optimized_circuits import OptimizedPhaseCircuit
