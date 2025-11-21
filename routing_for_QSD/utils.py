@@ -6,6 +6,7 @@ from numpy.linalg import eigh, pinv
 from scipy.linalg import sqrtm
 import sys
 import math
+
 np.set_printoptions(threshold=sys.maxsize, linewidth=sys.maxsize)
 
 def normalize(data):
@@ -53,33 +54,9 @@ def get_grey_gates(dist, half = False, all_gates = True, state_queue = False):
         return long_range_gates
 
 
-def generate_random_rz_multiplexer_unitary(num_qubits):
-    arr = normalize(np.array([2 * x - 1 for x in np.random.random_sample((2 ** num_qubits) ** 2)]))
-    mat_A = arr.reshape((2 ** num_qubits, 2 ** num_qubits))
-    U, _, _ = np.linalg.svd(mat_A)
-
-    sub_mat_dim = num_qubits - 1
-    Z = np.zeros((2 ** sub_mat_dim, 2 ** sub_mat_dim))
-
-    u, _, _ = cossin(U, p= 2 ** sub_mat_dim, q= 2 ** sub_mat_dim)
-
-    u_1 = u[:2 ** sub_mat_dim, :2 ** sub_mat_dim]
-    u_2 = u[2 ** sub_mat_dim:, 2 ** sub_mat_dim:]
-
-    u_1_u_2_dgr = u_1 @ np.conj(u_2.T)
-
-    eigval, _ = np.linalg.eig(u_1_u_2_dgr)
-
-    if -1 or 1 in eigval: diag = np.diag(eigval)
-    else: diag = np.diag([np.sqrt(x) for x in eigval])
-
-    block_diag = np.block([[diag, Z],
-                            [Z, np.conj(diag.T)]])
-    return block_diag
-
 
 def generate_U(num_qubits):
-    arr = normalize(np.array([2 * x - 1 for x in np.random.random_sample((2 ** num_qubits) ** 2)]))
+    arr = normalize(np.array([math.cos(2 * np.pi * x - np.pi) + 1j*math.sin(2 * np.pi * x - np.pi) for x in np.random.random_sample((2 ** num_qubits) ** 2)]))
     mat_A = arr.reshape((2 ** num_qubits, 2 ** num_qubits))
     U, _, _ = np.linalg.svd(mat_A)
     return U
@@ -121,7 +98,7 @@ def simultaneous_diagonalization(s_x, s_y, tol=1e-12):
     diag_s_x = np.real_if_close(eigvals)
     # clip small negative eigenvalues due to rounding
     diag_s_x = np.clip(diag_s_x, 0.0, None)
-    diag_s_y = np.real(diag_s_y)
+    diag_s_y = np.real_if_close(diag_s_y)
     return v_final, diag_s_x, diag_s_y
 
 def compute_csd(U, tol=1e-12):
@@ -135,39 +112,66 @@ def compute_csd(U, tol=1e-12):
     # Hermitian PSD factors (more stable than polar for our decomposition)
     XX = X @ X.conj().T
     YY = Y @ Y.conj().T
+
     s_x = sqrtm(XX)
     s_y = sqrtm(YY)
     # enforce Hermitian (numerical)
     s_x = 0.5 * (s_x + s_x.conj().T)
     s_y = 0.5 * (s_y + s_y.conj().T)
 
-    # unitary factors: Ux, Uy such that X = s_x @ Ux, Y = s_y @ Uy
+    # unitary factors: u_x, u_y such that X = s_x @ u_x, Y = s_y @ u_y
     # Use pseudo-inverse for s_x,s_y in case of singular values (stable)
     s_x_pinv = pinv(s_x)
     s_y_pinv = pinv(s_y)
     u_x = s_x_pinv @ X
     u_y = s_y_pinv @ Y
 
-    v, diagSx, diagSy = simultaneous_diagonalization(s_x, s_y, tol=tol)
-    sigma_x = np.diag(diagSx)
-    delta_y = np.diag(diagSy)
+    v, diag_s_x, diag_s_y = simultaneous_diagonalization(s_x, s_y, tol=tol)
+    sigma_x = np.diag(diag_s_x)
+    delta_y = np.diag(diag_s_y)
 
     M0 = Z @ u_y.conj().T @ s_x - W @ u_x.conj().T @ s_y
     M = M0 @ v
 
-    u = np.block([
-        [v, np.zeros((n, n), dtype=U.dtype)],
-        [np.zeros((n, n), dtype=U.dtype), M]
-    ])
+    u = np.block([[v, np.zeros((n, n), dtype=U.dtype)],
+                [np.zeros((n, n), dtype=U.dtype), M]])
+    
     cs = np.block([[sigma_x, delta_y],
                    [-delta_y, sigma_x]])
-    vh = np.block([
-        [v.conj().T @ u_x, np.zeros((n, n), dtype=U.dtype)],
-        [np.zeros((n, n), dtype=U.dtype), v.conj().T @ u_y]
-    ])
+    
+    vh = np.block([[v.conj().T @ u_x, np.zeros((n, n), dtype=U.dtype)],
+                    [np.zeros((n, n), dtype=U.dtype), v.conj().T @ u_y]])
 
 
     return u, cs, vh
+
+def is_unitary(U):
+    UU = clean_matrix(U @ np.conj(U.T))
+    return np.allclose(UU, np.eye(len(UU)))
+
+def generate_random_rz_multiplexer_unitary(num_qubits):
+    U = generate_U(num_qubits)
+
+    sub_mat_dim = num_qubits - 1
+    Z = np.zeros((2 ** sub_mat_dim, 2 ** sub_mat_dim))
+
+    u, _, _ = compute_csd(U)
+
+    u_1 = u[:2 ** sub_mat_dim, :2 ** sub_mat_dim]
+    u_2 = u[2 ** sub_mat_dim:, 2 ** sub_mat_dim:]
+
+    u_1_u_2_dgr = u_1 @ np.conj(u_2.T)
+
+    eigval, _ = np.linalg.eig(u_1_u_2_dgr)
+
+    if -1 or 1 in eigval: diag = np.diag(eigval)
+    else: diag = np.diag([np.sqrt(x) for x in eigval])
+
+    block_diag = np.block([[diag, Z],
+                            [Z, np.conj(diag.T)]])
+    return block_diag
+
+
 def extract_single_qubit_unitaries(mat):
     half = len(mat) // 2
     for i in range(half):
@@ -185,7 +189,7 @@ def extract_angles(unitaries):
 
         ang = math.acos(np.real(value))
 
-        if np.round(math.sin(ang), 5) == np.round(np.imag(value), 5): ang = -ang
+        if np.round(math.sin(ang), 10) == np.round(np.imag(value), 10): ang = -ang
         yield ang
 
 def clean_matrix(M):

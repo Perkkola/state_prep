@@ -1,6 +1,8 @@
 from collections import deque
 from qiskit.circuit import QuantumCircuit, Parameter, QuantumRegister
 from qiskit_ibm_runtime.fake_provider import FakeCairoV2
+from qiskit.compiler import transpile
+from qiskit_aer import Aer, AerSimulator
 import networkx as nx
 import matplotlib.pyplot as plt
 import sys
@@ -8,20 +10,27 @@ import os
 import math
 from functools import reduce
 import json
-from utils import get_grey_gates
+from utils import get_grey_gates, generate_random_rz_multiplexer_unitary, extract_single_qubit_unitaries, extract_angles, clean_matrix, is_unitary
 import numpy as np
 from gray_synth import synth_cnot_phase_aam
 
 class RoutedMultiplexor(object):
-    def __init__(self, multiplexor = None, coupling_map = None, num_qubits = 5):
+    def __init__(self, multiplexer_angles = None, coupling_map = None, num_qubits = 5, reverse = False):
         assert num_qubits >= 2
 
-        self.multiplexor = multiplexor
+        self.multiplexer_angles = multiplexer_angles
         self.coupling_map = coupling_map
+        self.reverse = reverse
 
 
-        self.num_qubits = num_qubits if self.multiplexor == None else math.log2(len(multiplexor))
+        self.num_qubits = num_qubits if self.multiplexer_angles == None else int(math.log2(len(multiplexer_angles)) + 1)
         self.num_controls = self.num_qubits - 1
+
+        if self.multiplexer_angles == None: 
+            self.multiplexer_angles = [0.123 for x in range(2 ** self.num_controls)]
+        else:
+            self.möttönen_transformation()
+
 
         if self.coupling_map == None: self.coupling_map = [[x, y] for x in range(self.num_qubits) for y in range(self.num_qubits) if x != y]
 
@@ -135,7 +144,7 @@ class RoutedMultiplexor(object):
         
         if cnot[1] == self.num_controls and self.state[self.num_controls] in self.pp_terms and self.state[self.num_controls] not in self.discovered_pp_terms:
             self.discovered_pp_terms.add(self.state[self.num_controls])
-            self.gate_queue.append("RZ")
+            self.gate_queue.append(("RZ", self.state_to_angle_dict[self.state[self.num_controls]]))
         elif cnot[1] == self.num_controls and ignore and self.state[self.num_controls] in self.pp_terms and self.state[self.num_controls] in self.discovered_pp_terms:
             self.gate_queue.pop()
             self.state[cnot[1]] ^= self.state[cnot[0]]
@@ -197,19 +206,34 @@ class RoutedMultiplexor(object):
 
             ignore = False if dist > 1 else True
             self.long_range_cnot(arch_path, False)
+    
+    def möttönen_transformation(self):
+        #todo: multithread
+        transformed_angles = np.zeros(len(self.multiplexer_angles))
+        for i in range(len(self.multiplexer_angles)):
+            temp = 0
+            g_m = i ^ (i >> 1)
+            for j in range(len(self.multiplexer_angles)):
+                dot_product = 0
+                for k in range(self.num_controls):
+                    dot_product += ((g_m >> k) & 1) * ((j >> k) & 1)
+                temp += math.pow(2, -self.num_controls) * math.pow((-1), dot_product) * self.multiplexer_angles[j] * 2
+            transformed_angles[i] = temp
+        
+        self.multiplexer_angles = transformed_angles
 
     def execute_gates(self):
         self.map_grey_qubits_to_arch()
-        grey_gates = get_grey_gates(self.num_controls, False, True)
+        grey_gates, grey_state_queue = get_grey_gates(self.num_controls, False, True, True)
 
         self.pp_terms = set([x for x in range(2 ** self.num_controls, 2 ** self.num_qubits)])
         self.discovered_pp_terms = set([2 ** self.num_controls])
         self.state = {q: 1 << q for q in range(self.num_qubits)}
+        self.state_to_angle_dict = dict(zip(grey_state_queue, self.multiplexer_angles))
         init_state = self.state.copy()
 
-
         self.gate_queue = deque()
-        self.gate_queue.append("RZ")
+        self.gate_queue.append(("RZ", self.multiplexer_angles[0]))
         for gate in grey_gates:
             ctrl_qubit = gate[0]
             arch_qubit = self.grey_to_arch_map[ctrl_qubit]
@@ -219,8 +243,6 @@ class RoutedMultiplexor(object):
             ignore = False if dist > 1 else True
             self.long_range_cnot(arch_path, ignore)
         
-
-
         if init_state != self.state:
             self.reset_state()
 
@@ -229,8 +251,7 @@ class RoutedMultiplexor(object):
         if len(unfound_terms) > 0:
             self.find_missing_terms(unfound_terms)
 
-
-        circuit_length = len([gate for gate in self.gate_queue if gate != "RZ"])
+        circuit_length = len([gate for gate in self.gate_queue if gate[0] != "RZ"])
 
         if len(self.discovered_pp_terms) != len(self.pp_terms):
             print(f"Found {len(self.discovered_pp_terms)}/{len(self.pp_terms)} phase polynomial terms.")
@@ -240,17 +261,24 @@ class RoutedMultiplexor(object):
         
         return circuit_length
 
-
     def map_grey_gates_to_arch(self):
         self.execute_gates()
         grey_gates = self.gate_queue.copy()
         arch_gates = deque()
 
+        if not self.reverse:
+            keys = list(self.grey_to_arch_map.keys()).copy()
+            temp = {}
+            for key in keys:
+                temp[self.num_controls - key] = self.grey_to_arch_map.pop(key)
+            self.grey_to_arch_map = temp
+
         while True:
             try:
                 grey_gate = grey_gates.popleft()
-                if grey_gate != "RZ":
-                    arch_gate = (self.grey_to_arch_map[grey_gate[0]], self.grey_to_arch_map[grey_gate[1]])
+                if grey_gate[0] != "RZ":
+                    if self.reverse: arch_gate = (self.grey_to_arch_map[grey_gate[0]], self.grey_to_arch_map[grey_gate[1]])
+                    else: arch_gate = (self.grey_to_arch_map[self.num_controls - grey_gate[0]], self.grey_to_arch_map[self.num_controls - grey_gate[1]])
                 else:
                     arch_gate = grey_gate
                 arch_gates.append(arch_gate)
@@ -283,28 +311,40 @@ class RoutedMultiplexor(object):
                 plt.savefig(f"./coupling_maps/{filename}.png", format="PNG")
             plt.show()
 
-    def draw_circuit(self, arch = False, filename = None):
+    def draw_circuit(self, arch = False, filename = None, print_unitary = False):
         if not arch:
             qc = QuantumCircuit(self.num_qubits)
         else: 
             qubits = [QuantumRegister(1, name=f'q{i}') for i in range(1, len(self.vertices) + 1)]
             qc = QuantumCircuit(*qubits)
 
-        phi = Parameter("θ")
         gates = self.gate_queue if not arch else self.arch_gates
         
 
         for gate in gates:
-            if gate == "RZ":
-                qc.rz(phi, self.num_controls) if not arch else qc.rz(phi, self.root - 1)
+            if gate[0] == "RZ":
+                if self.reverse: qc.rz(gate[1], self.num_controls) if not arch else qc.rz(gate[1], self.root - 1)
+                else: qc.rz(gate[1], 0) if not arch else qc.rz(gate[1], self.root - 1)
             else:
-                qc.cx(gate[0], gate[1]) if not arch else qc.cx(gate[0] - 1, gate[1] - 1)
+                if self.reverse: qc.cx(gate[0], gate[1]) if not arch else qc.cx(gate[0] - 1, gate[1] - 1)
+                else: qc.cx(self.num_controls - gate[0], self.num_controls - gate[1]) if not arch else qc.cx(gate[0] - 1, gate[1] - 1)
         if filename != None:
             fig = qc.draw(output="mpl", interactive=True, filename=filename)
         else:
             fig = qc.draw(output="mpl", interactive=True)
 
+        if print_unitary: self.print_circ_unitary(qc)
         plt.show()
+    
+    def print_circ_unitary(self, qc):
+        qc = qc.copy()
+        qc.save_unitary()
+        simulator = Aer.get_backend('aer_simulator')
+        qc = transpile(qc, simulator)
+
+        result = simulator.run(qc).result()
+        unitary = result.get_unitary(qc)
+        print("Circuit unitary:\n", np.asarray(unitary).round(5))
 
     def find_highest_degree_nodes(self):
         neighbors = {}
@@ -346,8 +386,16 @@ if __name__ == "__main__":
 
     fake_cairo = FakeCairoV2()
 
-    routed_multiplexor = RoutedMultiplexor(coupling_map=fake_cairo.coupling_map, num_qubits=num_qubits)
+
+    multiplexor_unitary = generate_random_rz_multiplexer_unitary(num_qubits)
+
+    single_qubit_unitaries = list(extract_single_qubit_unitaries(multiplexor_unitary))
+    angles = list(extract_angles(single_qubit_unitaries))
+
+
+    routed_multiplexor = RoutedMultiplexor(multiplexer_angles= angles, coupling_map= None, reverse=True)
     routed_multiplexor.run()
+    # routed_multiplexor.draw_circuit(print_unitary=True)
 
     # routed_multiplexor.draw_circuit(arch=True, filename=f"./circuits/final/cairo_{num_qubits}_qubits.png")
     # routed_multiplexor.draw_circuit(arch=True)
