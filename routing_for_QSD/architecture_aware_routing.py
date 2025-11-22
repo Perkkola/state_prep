@@ -10,7 +10,7 @@ import os
 import math
 from functools import reduce
 import json
-from utils import get_grey_gates, generate_random_rz_multiplexer_unitary, extract_single_qubit_unitaries, extract_angles, clean_matrix, is_unitary
+from utils import get_grey_gates, generate_random_rz_multiplexer_unitary, extract_single_qubit_unitaries, extract_angles, clean_matrix, is_unitary, möttönen_transformation
 import numpy as np
 from gray_synth import synth_cnot_phase_aam
 
@@ -22,14 +22,11 @@ class RoutedMultiplexor(object):
         self.coupling_map = coupling_map
         self.reverse = reverse
 
-
-        self.num_qubits = num_qubits if self.multiplexer_angles == None else int(math.log2(len(multiplexer_angles)) + 1)
+        self.num_qubits = num_qubits if multiplexer_angles == None else int(math.log2(len(multiplexer_angles)) + 1)
         self.num_controls = self.num_qubits - 1
 
         if self.multiplexer_angles == None: 
             self.multiplexer_angles = [0.123 for x in range(2 ** self.num_controls)]
-        else:
-            self.möttönen_transformation()
 
 
         if self.coupling_map == None: self.coupling_map = [[x, y] for x in range(self.num_qubits) for y in range(self.num_qubits) if x != y]
@@ -206,21 +203,6 @@ class RoutedMultiplexor(object):
 
             ignore = False if dist > 1 else True
             self.long_range_cnot(arch_path, False)
-    
-    def möttönen_transformation(self):
-        #todo: multithread
-        transformed_angles = np.zeros(len(self.multiplexer_angles))
-        for i in range(len(self.multiplexer_angles)):
-            temp = 0
-            g_m = i ^ (i >> 1)
-            for j in range(len(self.multiplexer_angles)):
-                dot_product = 0
-                for k in range(self.num_controls):
-                    dot_product += ((g_m >> k) & 1) * ((j >> k) & 1)
-                temp += math.pow(2, -self.num_controls) * math.pow((-1), dot_product) * self.multiplexer_angles[j] * 2
-            transformed_angles[i] = temp
-        
-        self.multiplexer_angles = transformed_angles
 
     def execute_gates(self):
         self.map_grey_qubits_to_arch()
@@ -286,7 +268,7 @@ class RoutedMultiplexor(object):
                 break
 
         self.arch_gates = arch_gates
-        return arch_gates
+        return arch_gates, self.gate_queue
     
     def run(self):
         self.map_grey_gates_to_arch()
@@ -388,14 +370,15 @@ if __name__ == "__main__":
 
 
     multiplexor_unitary = generate_random_rz_multiplexer_unitary(num_qubits)
+    print(multiplexor_unitary)
 
     single_qubit_unitaries = list(extract_single_qubit_unitaries(multiplexor_unitary))
     angles = list(extract_angles(single_qubit_unitaries))
+    transformed_angles = list(möttönen_transformation(angles))
 
-
-    routed_multiplexor = RoutedMultiplexor(multiplexer_angles= angles, coupling_map= None, reverse=True)
+    routed_multiplexor = RoutedMultiplexor(multiplexer_angles= transformed_angles, coupling_map= fake_garnet, reverse=True)
     routed_multiplexor.run()
-    # routed_multiplexor.draw_circuit(print_unitary=True)
+    routed_multiplexor.draw_circuit(print_unitary=True)
 
     # routed_multiplexor.draw_circuit(arch=True, filename=f"./circuits/final/cairo_{num_qubits}_qubits.png")
     # routed_multiplexor.draw_circuit(arch=True)

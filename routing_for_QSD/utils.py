@@ -200,3 +200,21 @@ def clean_matrix(M):
             if np.abs(np.imag(M[i][j])) < 1e-10: M[i][j] = np.real(M[i][j])
             M[i][j] = '{0:.8}'.format(M[i][j])
     return M
+
+def möttönen_transformation(multiplexer_angles):
+        #todo: multithread
+        n = len(multiplexer_angles)
+        num_controls = int(math.log2(n))
+
+        transformed_angles = np.zeros(n)
+        for i in range(n):
+            temp = 0
+            g_m = i ^ (i >> 1)
+            for j in range(n):
+                dot_product = 0
+                for k in range(num_controls):
+                    dot_product += ((g_m >> k) & 1) * ((j >> k) & 1)
+                temp += math.pow(2, -num_controls) * math.pow((-1), dot_product) * multiplexer_angles[j] * 2
+            transformed_angles[i] = temp
+        
+        return transformed_angles
