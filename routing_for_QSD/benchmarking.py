@@ -14,21 +14,22 @@ import math
 import sys
 import json
 import time
+from collections import deque
 from utils import get_grey_gates, generate_random_rz_multiplexer_unitary, extract_single_qubit_unitaries, extract_angles, clean_matrix, is_unitary, möttönen_transformation
 from architecture_aware_routing import RoutedMultiplexor
 from pauliopt.phase.phase_circuits import PhaseGadget, PhaseCircuit, Z, X
 from pauliopt.phase.optimized_circuits import OptimizedPhaseCircuit
 from pauliopt.topologies import Topology
-from pauliopt.utils import pi
+from pauliopt.utils import pi, Angle
 import matplotlib.pyplot as plt
 import networkx as nx
 import warnings
 
 warnings.filterwarnings("ignore", category=DeprecationWarning)
 
-IQM_TOKEN = None
-IBM_TOKEN = None
-IBM_INSTANCE = None
+IQM_TOKEN = "3BGYdJuhl8pAeYUNcJ3b9r6r2CtXuGPHdjwA1StOaGUBmnyXrB9+EKROdY4Q4p4w"
+IBM_TOKEN = 'u_k47sVdjZ8QvxY5bUj-PQRM2h_CNU8jcIh6RxJG_7Jg'
+IBM_INSTANCE = 'crn:v1:bluemix:public:quantum-computing:us-east:a/14c391407c20401a8dc347e17f51ba83:7d2deb88-e3a6-4315-8ca8-e936c1009807::'
 
 class QiskitBase(object):
     def __init__(self, num_qubits, coupling_map = None, multiplexer = None, print_unitary = False, reverse = False):
@@ -135,10 +136,12 @@ class QiskitGray(QiskitBase):
 
 
 class SteinerSynth(object):
-    def __init__(self, num_qubits, coupling_map = None):
+    def __init__(self, num_qubits, coupling_map = None, multiplexer = None, reverse= False):
         self.num_qubits = num_qubits
         self.num_controls = self.num_qubits - 1
         self.coupling_map = coupling_map
+        self.multiplexer = multiplexer
+        self.reverse = reverse
 
     def get_qiskit_circ(self, circuit, *args, **kwargs):
         draw_kwargs = {"output": "mpl", "interactive": True}
@@ -177,12 +180,19 @@ class SteinerSynth(object):
 
         _, state_queue = get_grey_gates(self.num_controls, state_queue=True)
 
+        if self.multiplexer != None:
+            im_lazy = RoutedMultiplexor(multiplexer_angles=self.multiplexer, coupling_map=None, reverse=self.reverse)
+            _, grey_gates = im_lazy.map_grey_gates_to_arch()
+            rz_gates = deque(list(filter(lambda gate: gate[0] == "RZ", grey_gates)))
+        else: rz_gates = None
+
         for state in state_queue:
             gadget_qubits = set()
             for i in range(self.num_qubits):
                 if (state >> i) & 1 == 1 and grey_to_arch_map != None: gadget_qubits.add(grey_to_arch_map[i] - 1 if shift else grey_to_arch_map[i])
                 elif (state >> i) & 1 == 1: gadget_qubits.add(i)
-            circuit >>= Z(pi/5) @ gadget_qubits
+            if rz_gates != None: circuit >>= Z(Angle(rz_gates.popleft()[1])) @ gadget_qubits
+            else: circuit >>= Z(pi / 5) @ gadget_qubits
         opt = OptimizedPhaseCircuit(circuit.copy(), topology, 3, phase_method="steiner-graysynth", cx_method="permrowcol",reallocate=True)
         
         qc = self.get_qiskit_circ(opt, topology)
@@ -191,14 +201,20 @@ class SteinerSynth(object):
     def count_cx(self, qc):
         return qc.count_ops()['cx'] if qc.count_ops().get('cx') != None else 0
     
+    def draw_circuit(self, qc):
+        fig = qc.draw(output="mpl", interactive=True)
+        plt.show()
+        plt.close(fig)
+    
 
 class TketBase(object):
-    def __init__(self, num_qubits, backend = None, multiplexer = None, print_unitary = False):
+    def __init__(self, num_qubits, backend = None, multiplexer = None, print_unitary = False, reverse=False):
         self.num_qubits = num_qubits
         self.num_controls = self.num_qubits - 1
         self.backend = backend
         self.multiplexer = multiplexer
         self.print_unitary = print_unitary
+        self.reverse = reverse
         self._get_backend()
 
     
@@ -238,13 +254,27 @@ class TketBase(object):
     
 class TKetGray(TketBase):
     def generate_circuit(self):
-        grey_gates = get_grey_gates(self.num_controls)
-        qc = Circuit(self.num_qubits)
+        if self.multiplexer != None:
+            im_lazy = RoutedMultiplexor(multiplexer_angles=self.multiplexer, coupling_map=None, reverse=self.reverse)
+            _, grey_gates = im_lazy.map_grey_gates_to_arch()
+            qc = Circuit(self.num_qubits)
+            for gate in list(grey_gates):
+                if gate[0] == "RZ":
+                    if self.reverse: qc.Rz((gate[1]) / np.pi, self.num_controls)
+                    else: qc.Rz((gate[1]) / np.pi, 0)
+                else:
+                    if self.reverse: qc.CX(gate[0], gate[1])
+                    else: qc.CX(self.num_controls - gate[0], self.num_controls - gate[1])
 
-        for gate in grey_gates:
-            qc.Rz(np.random.random() * 2 * np.pi - np.pi, self.num_controls)
-            qc.CX(gate[0], gate[1])
+        else:
+            grey_gates = get_grey_gates(self.num_controls, False, True)
+            qc = Circuit(self.num_qubits)
+            for gate in grey_gates:
+                qc.Rz(np.random.random() * 2 * np.pi - np.pi, self.num_controls)
+                qc.CX(gate[0], gate[1])
 
+        if self.print_unitary: print(clean_matrix(qc.get_unitary()))
+        
         if self.backend != None:
             self.backend.default_compilation_pass(optimisation_level=2).apply(qc)
 
@@ -277,7 +307,7 @@ if __name__ == "__main__":
     assert num_qubits > 1
 
     multiplexor_unitary = generate_random_rz_multiplexer_unitary(num_qubits)
-    # print(multiplexor_unitary)
+    print(multiplexor_unitary)
 
     single_qubit_unitaries = list(extract_single_qubit_unitaries(multiplexor_unitary))
     angles = list(extract_angles(single_qubit_unitaries))
@@ -313,36 +343,38 @@ if __name__ == "__main__":
 
     # print(multiplexor_unitary)
     # print("///////////////////")
-    # qn = QiskitNative(num_qubits, coupling_map, single_qubit_unitaries, print_unitary= True)
-    # qc = qn.generate_circuit(mux_simp=False)
-    # qn_cx_count = qn.count_cx(qc)
+    qn = QiskitNative(num_qubits, coupling_map=coupling_map, multiplexer=single_qubit_unitaries, print_unitary= True)
+    qc = qn.generate_circuit(mux_simp=False)
+    qn_cx_count = qn.count_cx(qc)
 
-    qg = QiskitGray(num_qubits, coupling_map, transformed_angles, False, True)
+    qg = QiskitGray(num_qubits, coupling_map=coupling_map, multiplexer=transformed_angles, print_unitary=True, reverse=True)
     qc2 = qg.generate_circuit()
     qg_cx_count = qg.count_cx(qc2)
 
 
     proposed = RoutedMultiplexor(multiplexer_angles=transformed_angles, coupling_map=coupling_map, num_qubits=num_qubits)
     p_cx_count = proposed.execute_gates()
+    qc_p = proposed.get_circuit()
+    proposed.print_circ_unitary(qc_p)
     grey_to_arch_map = proposed.grey_to_arch_map
 
-    # sg = SteinerSynth(num_qubits, coupling_map)
-    # qc3 = sg.generate_circuit(grey_to_arch_map=grey_to_arch_map)
-    # sg_cx_count = sg.count_cx(qc3)
+    sg = SteinerSynth(num_qubits, coupling_map, multiplexer= transformed_angles)
+    qc3 = sg.generate_circuit(grey_to_arch_map=grey_to_arch_map)
+    sg_cx_count = sg.count_cx(qc3)
     
-    # tg = TKetGray(num_qubits, backend)
-    # qc4 = tg.generate_circuit()
-    # tg_cx_count = tg.count_cx(qc4)
+    tg = TKetGray(num_qubits, backend=backend, multiplexer=transformed_angles, print_unitary=True)
+    qc4 = tg.generate_circuit()
+    tg_cx_count = tg.count_cx(qc4)
 
-    # tn = TketNative(num_qubits, backend, angles, print_unitary= True)
-    # qc5 = tn.generate_circuit()
-    # tn_cx_count = tn.count_cx(qc5)
+    tn = TketNative(num_qubits, backend=backend, multiplexer=angles, print_unitary= True)
+    qc5 = tn.generate_circuit()
+    tn_cx_count = tn.count_cx(qc5)
 
 
     
-    # print(f"Qiskit native UCGate CX count: {qn_cx_count}")
+    print(f"Qiskit native UCGate CX count: {qn_cx_count}")
     print(f"Qiskit with gray code multiplexor CX count: {qg_cx_count}")
-    # print(f"Steiner-Gray CX count: {sg_cx_count}")
-    # print(f"Tket with gray code CX count: {tg_cx_count}")
-    # print(f"Tket native Multiplexor CX count: {tg_cx_count}")
+    print(f"Steiner-Gray CX count: {sg_cx_count}")
+    print(f"Tket with gray code CX count: {tg_cx_count}")
+    print(f"Tket native Multiplexor CX count: {tg_cx_count}")
     print(f"Proposed method CX count: {p_cx_count}")

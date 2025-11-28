@@ -6,6 +6,8 @@ from numpy.linalg import eigh, pinv
 from scipy.linalg import sqrtm
 import sys
 import math
+import multiprocessing
+from multiprocessing import shared_memory
 
 np.set_printoptions(threshold=sys.maxsize, linewidth=sys.maxsize)
 
@@ -171,6 +173,19 @@ def generate_random_rz_multiplexer_unitary(num_qubits):
                             [Z, np.conj(diag.T)]])
     return block_diag
 
+def generate_random_rz_multiplexer_unitary_fast(num_qubits):
+    num_rzs = 2 ** (num_qubits - 1)
+    rzs =  []
+    phis = []
+    for _ in range(num_rzs):
+        phi = np.random.random() * 2 * np.pi - np.pi
+        phis.append(phi)
+        rzs.append(math.cos(phi) - 1j*math.sin(phi))
+
+    for phi in phis:
+        rzs.append(math.cos(phi) + 1j*math.sin(phi))
+
+    return np.diag(rzs)
 
 def extract_single_qubit_unitaries(mat):
     half = len(mat) // 2
@@ -192,6 +207,9 @@ def extract_angles(unitaries):
         if np.round(math.sin(ang), 10) == np.round(np.imag(value), 10): ang = -ang
         yield ang
 
+def random_angles(n):
+    return [np.random.random() * 2 * np.pi - np.pi for _ in range(n)]
+
 def clean_matrix(M):
     M = M.copy()
     for i in range(len(M)):
@@ -201,20 +219,55 @@ def clean_matrix(M):
             M[i][j] = '{0:.8}'.format(M[i][j])
     return M
 
+def _möttönen_transformation(start, stop, n, num_controls, global_angles, transformed_angles_name):
+    existing_transformed_angles = shared_memory.SharedMemory(name=transformed_angles_name)
+    transformed_angles = np.ndarray((n,), buffer=existing_transformed_angles.buf)
+
+    power = math.pow(2, -num_controls)
+    for i in range(start, stop):
+        temp = 0
+        g_m = i ^ (i >> 1)
+        for j in range(n):
+            dot_product = bin(g_m & j).count('1') % 2
+            temp +=  -global_angles[j]  if dot_product == 1 else global_angles[j]
+        transformed_angles[i] = power * temp * 2
+
+    existing_transformed_angles.close()
+
 def möttönen_transformation(multiplexer_angles):
-        #todo: multithread
+        global_angles = np.array(multiplexer_angles)
         n = len(multiplexer_angles)
+        transformed_angles = np.zeros(n)
         num_controls = int(math.log2(n))
 
-        transformed_angles = np.zeros(n)
-        for i in range(n):
-            temp = 0
-            g_m = i ^ (i >> 1)
-            for j in range(n):
-                dot_product = 0
-                for k in range(num_controls):
-                    dot_product += ((g_m >> k) & 1) * ((j >> k) & 1)
-                temp += math.pow(2, -num_controls) * math.pow((-1), dot_product) * multiplexer_angles[j] * 2
-            transformed_angles[i] = temp
-        
+        if num_controls >= 12:
+            shm_transformed_angles = shared_memory.SharedMemory(create=True, size=transformed_angles.nbytes)
+            new_shm_transformed_angles = np.ndarray(transformed_angles.shape, dtype=transformed_angles.dtype, buffer=shm_transformed_angles.buf)
+            new_shm_transformed_angles[:] = transformed_angles[:]
+
+            jobs = []
+            cores = multiprocessing.cpu_count()
+
+            for i in range(cores):
+                start = int((n / cores) * i)
+                stop = min(int((n / cores) * (i + 1)), n)
+                p = multiprocessing.Process(target = _möttönen_transformation, args=(start, stop, n, num_controls, global_angles, shm_transformed_angles.name))
+                jobs.append(p)
+                p.start()
+
+            for proc in jobs:
+                proc.join()
+            
+            transformed_angles = new_shm_transformed_angles.copy()
+            shm_transformed_angles.close()
+            shm_transformed_angles.unlink()
+        else:
+            power = math.pow(2, -num_controls)
+            for i in range(n):
+                temp = 0
+                g_m = i ^ (i >> 1)
+                for j in range(n):
+                    dot_product = bin(g_m & j).count('1') % 2
+                    temp +=  -global_angles[j]  if dot_product == 1 else global_angles[j]
+                transformed_angles[i] = power * temp * 2
         return transformed_angles
