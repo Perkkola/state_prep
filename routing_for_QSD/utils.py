@@ -207,6 +207,13 @@ def extract_angles(unitaries):
         if np.round(math.sin(ang), 10) == np.round(np.imag(value), 10): ang = -ang
         yield ang
 
+def extract_angles_from_eigvals(eigvals):
+    for value in eigvals:
+        ang = math.acos(np.real(value))
+
+        if np.round(math.sin(ang), 10) == np.round(np.imag(value), 10): ang = -ang
+        yield ang
+
 def random_angles(n):
     return [np.random.random() * 2 * np.pi - np.pi for _ in range(n)]
 

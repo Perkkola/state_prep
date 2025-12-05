@@ -82,3 +82,6 @@ https://www.sciencedirect.com/science/article/pii/S0024379518300843?via%3Dihub
 
 For diagonal extraction:
 https://arxiv.org/pdf/quant-ph/0401162 
+
+For 3-CNOT unitary construction. Follow advice from Vivek to perform the diagonal extraction:
+https://arxiv.org/pdf/quant-ph/0308033
