@@ -70,7 +70,7 @@ Vittorio state prep:
 https://arxiv.org/pdf/2505.06054
 
 Better QSD:
-https://arxiv.org/pdf/2403.13692+
+https://arxiv.org/pdf/2403.13692
 
 
 Steiner synth Github repo:
@@ -79,3 +79,6 @@ https://github.com/hashberg-io/pauliopt
 
 Possibly faster method for Cosine-Sine decomposition:
 https://www.sciencedirect.com/science/article/pii/S0024379518300843?via%3Dihub
+
+For diagonal extraction:
+https://arxiv.org/pdf/quant-ph/0401162 
