@@ -103,6 +103,119 @@ def simultaneous_diagonalization(s_x, s_y, tol=1e-12):
     diag_s_y = np.real_if_close(diag_s_y)
     return v_final, diag_s_x, diag_s_y
 
+def orthogonal_congruence_diagonalize(S, tol_eig=1e-8):
+    """
+    Given a complex symmetric 4x4 matrix S = S.T,
+    returns real orthogonal A and diagonal D (complex phases)
+    such that D = A.T @ S @ A (up to numerical tolerance).
+
+    Handles degenerate eigenvalues in Re(S) by block-diagonalization
+    of Im(S) inside degenerate subspaces.
+    """
+    assert S.shape == (4,4)
+    assert np.allclose(S, S.T, atol=1e-10), "S must be symmetric (S==S.T)"
+
+    # Real/imag parts (real symmetric)
+    R = np.real(S)
+    ImS = np.imag(S)
+
+    # 1) Eigendecompose real symmetric R: use eigh to get real orthonormal Q
+    eigvals, Q = np.linalg.eigh(R)   # Q columns are eigenvectors (real)
+
+    # 2) Group eigenvalues into degenerate clusters
+    clusters = []
+    used = np.zeros(len(eigvals), dtype=bool)
+    for i in range(len(eigvals)):
+        if used[i]:
+            continue
+        # find indices j where eigvals[j] ~= eigvals[i]
+        idx = [j for j in range(len(eigvals)) if abs(eigvals[j] - eigvals[i]) < tol_eig]
+        for j in idx:
+            used[j] = True
+        clusters.append(idx)
+
+    # 3) For each cluster of size > 1, diagonalize ImS restricted to that subspace
+    Q_final = Q.copy()
+    for cluster in clusters:
+        if len(cluster) == 1:
+            continue
+        # form basis vectors for this cluster
+        cols = cluster
+        subQ = Q[:, cols]   # shape (4, k)
+        # Project ImS into this subspace: B = subQ.T @ ImS @ subQ  (real symmetric)
+        B = subQ.T @ ImS @ subQ
+        # B is real symmetric; diagonalize it to get an orthonormal transform U_block
+        bvals, Ublock = np.linalg.eigh(B)
+        # Replace the columns subQ @ Ublock into Q_final
+        Q_final[:, cols] = subQ @ Ublock
+
+    # Q_final should be real orthogonal
+    # enforce orthonormality numerically (e.g. via QR) if needed
+    # small re-orthonormalization:
+    U, _, Vh = np.linalg.svd(Q_final)
+    Q_final = U @ Vh   # now orthonormal and det = +/-
+    # enforce det=+1 by flipping sign of first column if needed
+    if np.linalg.det(Q_final) < 0:
+        Q_final[:, 0] = -Q_final[:, 0]
+
+    A = Q_final   # real orthogonal
+
+    # 4) compute diagonal via congruence
+    D = A.T @ S @ A
+
+    # zero-out tiny off-diagonals
+    off = D.copy()
+    for i in range(4):
+        for j in range(4):
+            if i != j and abs(off[i, j]) < 1e-10:
+                off[i, j] = 0.0
+    D = off
+
+    return A, D
+
+def extract_two_from_kron(M, eps=1e-12):
+    """
+    Given a 4x4 matrix M that is approximately a ⊗ b,
+    return 2x2 matrices a, b so that a ⊗ b ≈ M (up to global scalar).
+    Indexing assumes ordering |00>,|01>,|10>,|11> and standard np.kron layout.
+    """
+    # Build R so that R = vec(a) vec(b)^T when M = a⊗b
+    R = np.zeros((4,4), dtype=complex)
+    for i1 in range(2):
+        for i2 in range(2):
+            for j1 in range(2):
+                for j2 in range(2):
+                    # M indices: row = 2*i1 + i2, col = 2*j1 + j2
+                    rowM = 2*i1 + i2
+                    colM = 2*j1 + j2
+                    # R indices: rowR = 2*i1 + j1, colR = 2*i2 + j2
+                    rowR = 2*i1 + j1
+                    colR = 2*i2 + j2
+                    R[rowR, colR] = M[rowM, colM]
+
+    # Rank-1 SVD
+    U, S, Vh = np.linalg.svd(R)
+    s0 = S[0]
+    u0 = U[:, 0]
+    v0 = Vh.conj().T[:, 0]
+
+    # Recover vec(a) and vec(b) up to a common scalar phase:
+    vec_a = u0 * np.sqrt(s0)
+    vec_b = v0 * np.sqrt(s0)
+
+    a = vec_a.reshape(2, 2)
+    b = vec_b.reshape(2, 2)
+
+    # Remove an overall scalar so that ||a||_F == ||b||_F (not necessary, but stabilizes)
+    na = np.linalg.norm(a)
+    nb = np.linalg.norm(b)
+    if na > 0 and nb > 0:
+        scale = np.sqrt(na / nb)
+        a = a / scale
+        b = b * scale
+
+    return a, b
+
 def compute_csd(U, tol=1e-12):
     n = U.shape[0] // 2
 

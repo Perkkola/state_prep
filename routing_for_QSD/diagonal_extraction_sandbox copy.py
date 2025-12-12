@@ -1,18 +1,14 @@
 import numpy as np
 from utils import generate_U, extract_two_from_kron
-from scipy.optimize import linear_sum_assignment
 import math
 
 sigma_y = np.array([[0, -1j],
                     [1j, 0]])
 
-
-xi = np.exp(1j * np.pi / 4)
 cnot_1_2 = np.array([[1, 0, 0, 0],
                        [0, 1, 0, 0],
                        [0, 0, 0, 1],
                        [0, 0, 1, 0]])
-cnot_1_2 = cnot_1_2 * xi
 
 cnot_2_1 = np.array([[1, 0, 0, 0],
                      [0, 0, 0, 1],
@@ -147,37 +143,51 @@ psi = np.atan2(np.imag(t_1 + t_2 + t_3 + t_4), np.real(t_1 + t_4 - t_3 - t_2))
 Delta = cnot_1_2 @ np.kron(I, rz(psi)) @ cnot_1_2
 gamma_U_Delta = gamma_map(U @ Delta)
 eigvals = np.linalg.eigvals(gamma_U_Delta)
-
-# print(eigvals)
-# exit()
 angles = [np.angle(eigval) for eigval in eigvals if np.angle(eigval) >= 0]
 
 assert len(angles) >= 2, "Need positive r and s"
-
-
 
 theta = (angles[0] + angles[1]) / 2
 phi = (angles[0] - angles[1]) / 2
 
 E_dgr = np.conjugate(E).T
 
-U_E = (E_dgr @ U @ cnot_1_2 @ np.kron(I, rz(psi)) @ cnot_1_2 @ E)
+U_E = (E_dgr @ U @ np.kron(I, rz(psi)) @ cnot_1_2 @ E)
 S_U = U_E @ (U_E.T)
 
-kernel = cnot_1_2 @ np.kron(rx(theta), rz(phi)) @ cnot_1_2
+kernel = cnot_1_2 @ np.kron(rz(theta), rx(phi)) @ cnot_1_2
 k_E = (E_dgr @ kernel @ E)
 S_k = k_E @ (k_E.T)
 
-# A_U, D_U = orthogonal_congruence_diagonalize(S_U)
-# B_k, D_k = orthogonal_congruence_diagonalize(S_k)
-S_U_real = np.real(S_U)
-eigvals_S_U_real, eigvecs_S_U_real = np.linalg.eigh(S_U_real)
 
-S_k_real = np.real(S_k)
-eigvals_S_k_real, eigvecs_S_k_real = np.linalg.eigh(S_k_real)
+A_U, D_U = orthogonal_congruence_diagonalize(S_U)
+B_k, D_k = orthogonal_congruence_diagonalize(S_k)
 
 
-print(eigvecs_S_U_real.T @ S_U @ eigvecs_S_U_real)
-print(eigvecs_S_k_real.T @ S_k @ eigvecs_S_k_real)
-# exit()
+C = np.conjugate(k_E).T @ B_k.T @ A_U @ U_E
+
+
+
+
+A_tilde = E @ A_U @ E_dgr   # should be a ⊗ b
+C_tilde = E @ C @ E_dgr     # should be c ⊗ d
+
+a, b = extract_two_from_kron(A_tilde)
+c, d = extract_two_from_kron(C_tilde)
+
+def reconstruction_error_up_to_global_phase(X, Y):
+    """
+    Return Frobenius norm of X - e^{i phi} Y minimized over phi.
+    Equivalent to norm(X - ( <X,Y> / |<X,Y>| ) * Y).
+    """
+    # flatten and compute inner product
+    x = X.ravel()
+    y = Y.ravel()
+    inner = np.vdot(y, x)  # note vdot(y,x) = conj(y)^T x
+    if abs(inner) < 1e-16:
+        # orthogonal-ish; can't align a phase
+        return np.linalg.norm(X - Y)
+    phase = inner / abs(inner)
+    return np.linalg.norm(X - phase * Y)
+
 
