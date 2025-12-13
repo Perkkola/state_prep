@@ -334,9 +334,9 @@ def clean_matrix(M):
     M = M.copy()
     for i in range(len(M)):
         for j in range(len(M)):
-            if np.abs(M[i][j]) < 1e-10: M[i][j] = float(0.0)
-            if np.abs(np.imag(M[i][j])) < 1e-10: M[i][j] = np.real(M[i][j])
-            M[i][j] = '{0:.8}'.format(M[i][j])
+            if np.abs(M[i][j]) < 1e-12: M[i][j] = float(0.0)
+            if np.abs(np.imag(M[i][j])) < 1e-12: M[i][j] = np.real(M[i][j])
+            M[i][j] = '{0:.12}'.format(M[i][j])
     return M
 
 def _möttönen_transformation(start, stop, n, num_controls, global_angles, transformed_angles_name):
