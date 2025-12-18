@@ -173,49 +173,6 @@ def orthogonal_congruence_diagonalize(S, tol_eig=1e-8):
 
     return A, D
 
-def extract_two_from_kron(M, eps=1e-12):
-    """
-    Given a 4x4 matrix M that is approximately a ⊗ b,
-    return 2x2 matrices a, b so that a ⊗ b ≈ M (up to global scalar).
-    Indexing assumes ordering |00>,|01>,|10>,|11> and standard np.kron layout.
-    """
-    # Build R so that R = vec(a) vec(b)^T when M = a⊗b
-    R = np.zeros((4,4), dtype=complex)
-    for i1 in range(2):
-        for i2 in range(2):
-            for j1 in range(2):
-                for j2 in range(2):
-                    # M indices: row = 2*i1 + i2, col = 2*j1 + j2
-                    rowM = 2*i1 + i2
-                    colM = 2*j1 + j2
-                    # R indices: rowR = 2*i1 + j1, colR = 2*i2 + j2
-                    rowR = 2*i1 + j1
-                    colR = 2*i2 + j2
-                    R[rowR, colR] = M[rowM, colM]
-
-    # Rank-1 SVD
-    U, S, Vh = np.linalg.svd(R)
-    s0 = S[0]
-    u0 = U[:, 0]
-    v0 = Vh.conj().T[:, 0]
-
-    # Recover vec(a) and vec(b) up to a common scalar phase:
-    vec_a = u0 * np.sqrt(s0)
-    vec_b = v0 * np.sqrt(s0)
-
-    a = vec_a.reshape(2, 2)
-    b = vec_b.reshape(2, 2)
-
-    # Remove an overall scalar so that ||a||_F == ||b||_F (not necessary, but stabilizes)
-    na = np.linalg.norm(a)
-    nb = np.linalg.norm(b)
-    if na > 0 and nb > 0:
-        scale = np.sqrt(na / nb)
-        a = a / scale
-        b = b * scale
-
-    return a, b
-
 def compute_csd(U, tol=1e-12):
     n = U.shape[0] // 2
 
