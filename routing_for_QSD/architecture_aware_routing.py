@@ -384,6 +384,7 @@ if __name__ == "__main__":
 
     routed_multiplexor = RoutedMultiplexor(multiplexer_angles= transformed_angles, coupling_map= fake_garnet)
     cx_count = routed_multiplexor.execute_gates()
-    # qc = routed_multiplexor.get_circuit()
+    qc = routed_multiplexor.get_circuit()
+    routed_multiplexor.draw_circuit(qc)
     # routed_multiplexor.print_circ_unitary(qc)
     print(f"Number of cx: {cx_count}")

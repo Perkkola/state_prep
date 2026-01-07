@@ -58,7 +58,8 @@ def get_grey_gates(dist, half = False, all_gates = True, state_queue = False):
 
 
 def generate_U(num_qubits):
-    arr = normalize(np.array([math.cos(2 * np.pi * x - np.pi) + 1j*math.sin(2 * np.pi * x - np.pi) for x in np.random.random_sample((2 ** num_qubits) ** 2)]))
+    # arr = normalize(np.array([math.cos(2 * np.pi * x - np.pi) + 1j*math.sin(2 * np.pi * x - np.pi) for x in np.random.random_sample((2 ** num_qubits) ** 2)]))
+    arr = normalize(np.array([x for x in np.random.random_sample((2 ** num_qubits) ** 2)]))
     mat_A = arr.reshape((2 ** num_qubits, 2 ** num_qubits))
     U, _, _ = np.linalg.svd(mat_A)
     return U

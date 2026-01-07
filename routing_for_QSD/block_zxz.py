@@ -41,8 +41,8 @@ class BlockZXZ(object):
 
 
         C = -1j * np.conjugate(U_x).T @ U_y
-        A_1 = (S_x +1j*S_y) @ U_x
-        A_2 = u_21 + u_22 @ (1j* np.conjugate(U_y).T @ U_x)
+        A_1 = (S_x + 1j * S_y) @ U_x
+        A_2 = u_21 + u_22 @ (1j * np.conjugate(U_y).T @ U_x)
 
         I = np.eye(block_len)
         B = 2 * np.conjugate(A_1).T @ X - I
@@ -54,14 +54,15 @@ class BlockZXZ(object):
         H = (1 / np.sqrt(2)) * np.array([[1, 1],
                                          [1, -1]])
         
+
+        print("Ready here")
         recon = np.kron(I, V_A) @ block_diag_A @ np.kron(I, W_A) @ np.kron(H, V_B) @ block_diag_B @ np.kron(H, W_B) @ np.kron(I, V_C) @ block_diag_C @ np.kron(I, W_C)
 
-        print(recon)
-        print(u)
-        
+        print(np.allclose(recon, u))
+
 
 
 if __name__ == "__main__":
-    U = generate_U(2)
+    U = generate_U(13)
     zxz = BlockZXZ(U)
     zxz.compute_decomposition(U)
