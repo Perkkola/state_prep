@@ -15,7 +15,7 @@ from utils import get_grey_gates, extract_single_qubit_unitaries, extract_angles
 import numpy as np
 from gray_synth import synth_cnot_phase_aam
 
-class RoutedMultiplexor(object):
+class RoutedMultiplexer(object):
     def __init__(self, multiplexer_angles = None, coupling_map = None, num_qubits = 5, reverse = True):
         assert num_qubits >= 2
 
@@ -29,13 +29,13 @@ class RoutedMultiplexor(object):
         if self.multiplexer_angles == None: 
             self.multiplexer_angles = [0.123 for x in range(2 ** self.num_controls)]
 
-
+        self.multiplexer_angles = np.array(self.multiplexer_angles)
         if self.coupling_map == None: self.coupling_map = [[x, y] for x in range(self.num_qubits) for y in range(self.num_qubits) if x != y]
 
         self.neighbors = self.get_neighbors()
         self.vertices = self.neighbors.copy().keys()
 
-        assert len(self.vertices) >= self.num_qubits
+        assert len(self.vertices) >= self.num_qubits, "Not enough qubits on the hardware."
     
     def get_neighbors(self):
         neighbors = {}
@@ -272,6 +272,21 @@ class RoutedMultiplexor(object):
         self.arch_gates = arch_gates
         return arch_gates, self.gate_queue
     
+    def reverse_and_replace_mapped_angles(self, new_angles):
+        assert self.gate_queue != None
+        old_gates = self.gate_queue.copy()
+        new_gates = deque()
+
+        while True:
+            try:
+                gate = old_gates.pop()
+                if gate[0] != "RZ": new_gates.append(gate)
+                else: 
+                    new_gates.append(("RZ", new_angles[np.where(self.multiplexer_angles == gate[1])[0][0]]))
+            except Exception as e:
+                break
+        return new_gates
+    
     def run(self):
         self.map_grey_gates_to_arch()
 
@@ -382,9 +397,9 @@ if __name__ == "__main__":
     transformed_angles = list(möttönen_transformation(angles))
 
 
-    routed_multiplexor = RoutedMultiplexor(multiplexer_angles= transformed_angles, coupling_map= fake_garnet)
-    cx_count = routed_multiplexor.execute_gates()
-    qc = routed_multiplexor.get_circuit()
-    routed_multiplexor.draw_circuit(qc)
-    # routed_multiplexor.print_circ_unitary(qc)
+    routed_multiplexer = RoutedMultiplexer(multiplexer_angles= transformed_angles, coupling_map= fake_garnet)
+    cx_count = routed_multiplexer.execute_gates()
+    qc = routed_multiplexer.get_circuit()
+    routed_multiplexer.draw_circuit(qc)
+    # routed_multiplexer.print_circ_unitary(qc)
     print(f"Number of cx: {cx_count}")

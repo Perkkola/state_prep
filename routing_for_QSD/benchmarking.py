@@ -16,7 +16,7 @@ import json
 import time
 from collections import deque
 from utils import get_grey_gates, generate_random_rz_multiplexer_unitary, extract_single_qubit_unitaries, extract_angles, clean_matrix, is_unitary, möttönen_transformation
-from architecture_aware_routing import RoutedMultiplexor
+from architecture_aware_routing import RoutedMultiplexer
 from pauliopt.phase.phase_circuits import PhaseGadget, PhaseCircuit, Z, X
 from pauliopt.phase.optimized_circuits import OptimizedPhaseCircuit
 from pauliopt.topologies import Topology
@@ -107,7 +107,7 @@ class QiskitGray(QiskitBase):
     def generate_circuit(self):
 
         if self.multiplexer != None:
-            im_lazy = RoutedMultiplexor(multiplexer_angles=self.multiplexer, coupling_map=None, reverse=self.reverse)
+            im_lazy = RoutedMultiplexer(multiplexer_angles=self.multiplexer, coupling_map=None, reverse=self.reverse)
             _, grey_gates = im_lazy.map_grey_gates_to_arch()
             qc = QuantumCircuit(self.num_qubits)
             for gate in list(grey_gates):
@@ -181,7 +181,7 @@ class SteinerSynth(object):
         _, state_queue = get_grey_gates(self.num_controls, state_queue=True)
 
         if self.multiplexer != None:
-            im_lazy = RoutedMultiplexor(multiplexer_angles=self.multiplexer, coupling_map=None, reverse=self.reverse)
+            im_lazy = RoutedMultiplexer(multiplexer_angles=self.multiplexer, coupling_map=None, reverse=self.reverse)
             _, grey_gates = im_lazy.map_grey_gates_to_arch()
             rz_gates = deque(list(filter(lambda gate: gate[0] == "RZ", grey_gates)))
         else: rz_gates = None
@@ -255,7 +255,7 @@ class TketBase(object):
 class TKetGray(TketBase):
     def generate_circuit(self):
         if self.multiplexer != None:
-            im_lazy = RoutedMultiplexor(multiplexer_angles=self.multiplexer, coupling_map=None, reverse=self.reverse)
+            im_lazy = RoutedMultiplexer(multiplexer_angles=self.multiplexer, coupling_map=None, reverse=self.reverse)
             _, grey_gates = im_lazy.map_grey_gates_to_arch()
             qc = Circuit(self.num_qubits)
             for gate in list(grey_gates):
@@ -352,7 +352,7 @@ if __name__ == "__main__":
     qg_cx_count = qg.count_cx(qc2)
 
 
-    proposed = RoutedMultiplexor(multiplexer_angles=transformed_angles, coupling_map=coupling_map, num_qubits=num_qubits)
+    proposed = RoutedMultiplexer(multiplexer_angles=transformed_angles, coupling_map=coupling_map, num_qubits=num_qubits)
     p_cx_count = proposed.execute_gates()
     qc_p = proposed.get_circuit()
     proposed.print_circ_unitary(qc_p)
