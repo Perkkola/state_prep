@@ -126,6 +126,7 @@ class RoutedMultiplexer(object):
             grey_to_arch_map[grey_key] = key
         
         self.grey_to_arch_map = grey_to_arch_map
+        self.arch_qubits = list(grey_to_arch_map.values()).copy()
 
         self.arch_to_grey_map = {}
 
@@ -270,16 +271,16 @@ class RoutedMultiplexer(object):
                 break
 
         self.arch_gates = arch_gates
-        return arch_gates, self.gate_queue
+        return arch_gates, self.gate_queue.copy()
     
-    def reverse_and_replace_mapped_angles(self, new_angles):
+    def replace_mapped_angles(self, new_angles, reverse = True):
         assert self.gate_queue != None
         old_gates = self.gate_queue.copy()
         new_gates = deque()
-
+        
         while True:
             try:
-                gate = old_gates.pop()
+                gate = old_gates.pop() if reverse else old_gates.popleft()
                 if gate[0] != "RZ": new_gates.append(gate)
                 else: 
                     new_gates.append(("RZ", new_angles[np.where(self.multiplexer_angles == gate[1])[0][0]]))
@@ -400,6 +401,7 @@ if __name__ == "__main__":
     routed_multiplexer = RoutedMultiplexer(multiplexer_angles= transformed_angles, coupling_map= fake_garnet)
     cx_count = routed_multiplexer.execute_gates()
     qc = routed_multiplexer.get_circuit()
+    print(routed_multiplexer.grey_to_arch_map)
     routed_multiplexer.draw_circuit(qc)
     # routed_multiplexer.print_circ_unitary(qc)
     print(f"Number of cx: {cx_count}")
