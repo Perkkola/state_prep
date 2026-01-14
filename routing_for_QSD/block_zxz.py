@@ -1,14 +1,16 @@
 import numpy as np
 import math
-from utils import generate_U
 import json
-from utils import extract_single_qubit_unitaries, extract_angles, möttönen_transformation
+from utils import extract_single_qubit_unitaries, extract_angles, möttönen_transformation, generate_U
 from architecture_aware_routing import RoutedMultiplexer
 from collections import deque
-from qiskit.circuit import QuantumCircuit, Parameter, QuantumRegister
+from qiskit.circuit import QuantumCircuit
 from qiskit.circuit.library import UnitaryGate
+from qiskit.compiler import transpile
+from qiskit_aer import Aer
 from a_star import BasicAStar
 from two_qubit_decomposition import extract_diagonal
+import matplotlib.pyplot as plt
 
 class BlockZXZ(object):
     def __init__(self, U, coupling_map = None):
@@ -16,6 +18,25 @@ class BlockZXZ(object):
         self.coupling_map = coupling_map
         self.gate_queue = deque()
         self.two_qubit_unitary_path = None
+        self.diag = None
+
+    def print_circ_unitary(self, qc):
+        qc = qc.copy()
+        qc.save_unitary()
+        simulator = Aer.get_backend('aer_simulator')
+        qc = transpile(qc, simulator)
+
+        result = simulator.run(qc).result()
+        unitary = result.get_unitary(qc)
+        U = np.asarray(unitary)
+        print("Circuit unitary:\n", U.round(5))
+
+    def draw_circuit(self, qc, filename=None):
+        if filename != None:
+            fig = qc.draw(output="mpl", interactive=True, filename=filename)
+        else:
+            fig = qc.draw(output="mpl", interactive=True)
+        plt.show()
 
     def get_cnot_unitary(self, num_qubits, cnot):
         cnot = (cnot[1], cnot[0])
@@ -40,19 +61,37 @@ class BlockZXZ(object):
         AStar = BasicAStar(neighbors)
         return AStar.astar(source, target)
     
-    def swap_to_adjacent(self):
-        for i in range(len(self.two_qubit_unitary_path) - 2):
+    def swap_to_adjacent(self, reverse = False):
+        new_source = 0 
+        if reverse:
+            indices = reversed(range(len(self.two_qubit_unitary_path) - 2))
+        else: 
+            indices = range(len(self.two_qubit_unitary_path) - 2)
+        for i in indices:
             q_1 = self.routed_multiplexer.arch_to_grey_map[self.two_qubit_unitary_path[i]]
             q_2 = self.routed_multiplexer.arch_to_grey_map[self.two_qubit_unitary_path[i + 1]]
+            new_source = q_2 
             self.gate_queue.append(("SWAP", (q_1, q_2)))
-    
-    def decompose_two_qubit_unitary(self, u):
+
+        return new_source
+
+
+    def decompose_two_qubit_unitary(self, u, rightmost_unitary, leftmost_unitary):
         source = self.routed_multiplexer.grey_to_arch_map[0]
         target = self.routed_multiplexer.grey_to_arch_map[1]
 
         if self.two_qubit_unitary_path == None : self.two_qubit_unitary_path = list(self.get_path(source, target))
-        if len(self.two_qubit_unitary_path) - 1 > 1: self.swap_to_adjacent()
-        extract_diagonal(u)
+
+        # new_source = self.swap_to_adjacent(reverse = True)
+
+        # if rightmost_unitary == False: u = self.diag @ u
+        diag_gates, diag_u, two_cnot_unitary_gates = extract_diagonal(u, 0)
+        # self.diag = diag_u
+        self.gate_queue.append(two_cnot_unitary_gates)
+        # if leftmost_unitary == True: self.gate_queue.append(diag_gates)
+        self.gate_queue.append(diag_gates)
+
+        # _ = self.swap_to_adjacent()
     
     def demultiplex(self, u_1, u_2):
         block_len = len(u_1)
@@ -71,12 +110,12 @@ class BlockZXZ(object):
 
         return V, block_diag, W
 
-    def compute_decomposition(self, u, init = False):
+    def compute_decomposition(self, u, init = False, rightmost_unitary = False, leftmost_unitary = False):
         num_qubits = int(math.log2(len(u)))
         target_qubit = num_qubits - 1
 
         if num_qubits == 2:
-            self.decompose_two_qubit_unitary(u)
+            self.decompose_two_qubit_unitary(u, rightmost_unitary, leftmost_unitary)
             return
 
         block_len = len(u) // 2
@@ -152,44 +191,22 @@ class BlockZXZ(object):
 
         gates_B = routed_multiplexer.replace_mapped_angles(transformed_angles_B, False)
 
-
-        self.compute_decomposition(W_C)
-        self.gate_queue.append(gates_C)
-        self.compute_decomposition(W_B)
+        self.compute_decomposition(V_A, rightmost_unitary = True)
+        # self.gate_queue.append(V_A)
+        self.gate_queue.append(gates_A)
+        self.compute_decomposition(V_B)
+        # self.gate_queue.append(V_B)
         self.gate_queue.append(("H", target_qubit))
         self.gate_queue.append(gates_B)
         self.gate_queue.append(("H", target_qubit))
-        self.compute_decomposition(V_B)
-        self.gate_queue.append(gates_A)
-        self.compute_decomposition(V_A)
+        self.compute_decomposition(W_B)
+        # self.gate_queue.append(W_B)
+        self.gate_queue.append(gates_C)
+        self.compute_decomposition(W_C, leftmost_unitary = True)
+        # self.gate_queue.append(W_C)
 
-        qc = QuantumCircuit(num_qubits)
-
-        while True:
-            try:
-                gates = self.gate_queue.popleft()
-                match type(gates).__name__:
-                    case 'deque':
-                        for gate in list(gates):
-                            if gate[0] == "RZ": qc.rz(gate[1], target_qubit)
-                            else: qc.cx(gate[0], gate[1])
-                    case 'ndarray':
-                        U = UnitaryGate(gates)
-                        qc.append(U, [x for x in range(num_qubits - 1)])
-                    case 'tuple':
-                        qc.h(gates[1])
-
-            except Exception as e:
-                # print(e)
-                break
-        # print(routed_multiplexer.arch_qubits)
-        # print(qc)
-
-        routed_multiplexer.print_circ_unitary(qc)
-        print(u)
-        # recon = np.kron(I_2, V_A) @ block_diag_A @ np.kron(I_2, W_A) @ np.kron(H, V_B) @ block_diag_B @ np.kron(H, W_B) @ np.kron(I_2, V_C) @ block_diag_C @ np.kron(I_2, W_C)
-
-        # print(np.allclose(recon, u))
+        
+        
 
 
 
@@ -197,10 +214,40 @@ if __name__ == "__main__":
     with open(f"coupling_maps/fake_garnet.json") as f:
         fake_garnet = json.load(f)
 
-    U = generate_U(3)
+    num_qubits = 3
+    U = generate_U(num_qubits)
+    U = (U / np.linalg.det(U) ** (1 / 8))
 
 
     zxz = BlockZXZ(U, coupling_map=fake_garnet)
-    # print(zxz.get_cnot_unitary(2, (0, 1)))
-    # exit()
     zxz.compute_decomposition(U, init = True)
+    qc = QuantumCircuit(num_qubits)
+
+    while True:
+        try:
+            gates = zxz.gate_queue.pop()
+            match type(gates).__name__:
+                case 'deque':
+                    for gate in list(gates):
+                        if gate[0] == "RZ": qc.rz(gate[1], gate[2])
+                        elif gate[0] == "RY": qc.ry(gate[1], gate[2])
+                        elif gate[0] == "RX": qc.rx(gate[1], gate[2])
+                        else: qc.cx(gate[0], gate[1])
+                case 'tuple':
+                    if gates[0] == 'H': qc.h(gates[1])
+                    else: qc.swap(gates[1][0], gates[1][1])
+                case 'ndarray':
+                    u_gate = UnitaryGate(gates)
+                    qc.append(u_gate, [0, 1])
+            # qc.barrier()
+
+        except Exception as e:
+            break
+
+    zxz.draw_circuit(qc)
+    # exit()
+    zxz.print_circ_unitary(qc)
+    print(U)
+    # recon = np.kron(I_2, V_A) @ block_diag_A @ np.kron(I_2, W_A) @ np.kron(H, V_B) @ block_diag_B @ np.kron(H, W_B) @ np.kron(I_2, V_C) @ block_diag_C @ np.kron(I_2, W_C)
+
+    # print(np.allclose(recon, u))

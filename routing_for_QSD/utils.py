@@ -349,3 +349,48 @@ def möttönen_transformation(multiplexer_angles):
                     temp +=  -global_angles[j]  if dot_product == 1 else global_angles[j]
                 transformed_angles[i] = power * temp * 2
         return transformed_angles
+
+
+def get_zyz_angles(U):
+    """
+    Decomposes a 2x2 unitary matrix U into ZYZ Euler angles.
+    Returns (phi, theta, lam) such that:
+    U = Rz(phi) @ Ry(theta) @ Rz(lam)
+    """
+    # Extract elements
+    u00 = U[0, 0]
+    u10 = U[1, 0]
+    u11 = U[1, 1]
+    
+    # 1. Calculate Theta
+    # Use abs() to handle complex magnitudes
+    # 2 * atan2(sin_part, cos_part)
+    theta = 2 * np.arctan2(np.abs(u10), np.abs(u00))
+    
+    # Define a small tolerance for float comparison
+    TOL = 1e-12
+
+    # 2. Calculate Phi and Lambda (Handling singularities)
+    if np.abs(u10) < TOL: # Theta is approx 0
+        # u10 is 0, so arg(u10) is undefined. 
+        # We only know phi + lam = 2 * arg(u11)
+        lam = 0.0
+        phi = 2 * np.angle(u11)
+        
+    elif np.abs(u00) < TOL: # Theta is approx Pi
+        # u00 (and u11) is 0, so arg(u11) is undefined.
+        # We only know phi - lam = 2 * arg(u10)
+        lam = 0.0
+        phi = 2 * np.angle(u10)
+        
+    else: # General case
+        # angle(u11) = (phi + lam)/2
+        # angle(u10) = (phi - lam)/2
+        
+        sum_phases = 2 * np.angle(u11)
+        diff_phases = 2 * np.angle(u10)
+        
+        phi = (sum_phases + diff_phases) / 2
+        lam = (sum_phases - diff_phases) / 2
+        
+    return phi, theta, lam

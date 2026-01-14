@@ -1,15 +1,12 @@
 from collections import deque
-from qiskit.circuit import QuantumCircuit, Parameter, QuantumRegister
+from qiskit.circuit import QuantumCircuit, QuantumRegister
 from qiskit_ibm_runtime.fake_provider import FakeCairoV2
 from qiskit.compiler import transpile
-from qiskit_aer import Aer, AerSimulator
+from qiskit_aer import Aer
 import networkx as nx
 import matplotlib.pyplot as plt
 import sys
-import os
-import time
 import math
-from functools import reduce
 import json
 from utils import get_grey_gates, extract_single_qubit_unitaries, extract_angles, möttönen_transformation, generate_random_rz_multiplexer_unitary_fast, random_angles
 import numpy as np
@@ -144,7 +141,7 @@ class RoutedMultiplexer(object):
         if cnot[1] == self.num_controls:
             if self.state[self.num_controls] not in self.discovered_pp_terms:
                 self.discovered_pp_terms.add(self.state[self.num_controls])
-                self.gate_queue.append(("RZ", self.state_to_angle_dict[self.state[self.num_controls]]))
+                self.gate_queue.append(("RZ", self.state_to_angle_dict[self.state[self.num_controls]], self.num_controls))
             elif ignore and self.state[self.num_controls] in self.discovered_pp_terms:
                 self.gate_queue.pop()
                 self.state[cnot[1]] ^= self.state[cnot[0]]
@@ -218,7 +215,7 @@ class RoutedMultiplexer(object):
         init_state = self.state.copy()
 
         self.gate_queue = deque()
-        self.gate_queue.append(("RZ", self.multiplexer_angles[0]))
+        self.gate_queue.append(("RZ", self.multiplexer_angles[0], self.num_controls))
         for gate in grey_gates:
             ctrl_qubit = gate[0]
             arch_qubit = self.grey_to_arch_map[ctrl_qubit]
@@ -283,7 +280,7 @@ class RoutedMultiplexer(object):
                 gate = old_gates.pop() if reverse else old_gates.popleft()
                 if gate[0] != "RZ": new_gates.append(gate)
                 else: 
-                    new_gates.append(("RZ", new_angles[np.where(self.multiplexer_angles == gate[1])[0][0]]))
+                    new_gates.append(("RZ", new_angles[np.where(self.multiplexer_angles == gate[1])[0][0]], self.num_controls))
             except Exception as e:
                 break
         return new_gates
