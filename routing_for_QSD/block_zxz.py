@@ -9,7 +9,7 @@ from qiskit.circuit.library import UnitaryGate
 from qiskit.compiler import transpile
 from qiskit_aer import Aer
 from a_star import BasicAStar
-from two_qubit_decomposition import extract_diagonal
+from two_qubit_decomposition import extract_diagonal, three_cnot_decomposition
 import matplotlib.pyplot as plt
 
 class BlockZXZ(object):
@@ -29,7 +29,10 @@ class BlockZXZ(object):
         result = simulator.run(qc).result()
         unitary = result.get_unitary(qc)
         U = np.asarray(unitary)
+        # phase = np.linalg.det(U) ** (1 / 8)
+        # U = U / phase
         print("Circuit unitary:\n", U.round(5))
+        return U
 
     def draw_circuit(self, qc, filename=None):
         if filename != None:
@@ -84,12 +87,14 @@ class BlockZXZ(object):
 
         # new_source = self.swap_to_adjacent(reverse = True)
 
-        # if rightmost_unitary == False: u = self.diag @ u
-        diag_gates, diag_u, two_cnot_unitary_gates = extract_diagonal(u, 0)
-        # self.diag = diag_u
-        self.gate_queue.append(two_cnot_unitary_gates)
+        if rightmost_unitary == False: u = self.diag @ u
+        if not leftmost_unitary: 
+            diag_u, gates = extract_diagonal(u, 0)
+            self.diag = diag_u
+        else:
+            gates = three_cnot_decomposition(u, 0)
+        self.gate_queue.append(gates)
         # if leftmost_unitary == True: self.gate_queue.append(diag_gates)
-        self.gate_queue.append(diag_gates)
 
         # _ = self.swap_to_adjacent()
     
@@ -192,18 +197,18 @@ class BlockZXZ(object):
         gates_B = routed_multiplexer.replace_mapped_angles(transformed_angles_B, False)
 
         self.compute_decomposition(V_A, rightmost_unitary = True)
-        # self.gate_queue.append(V_A)
+        # self.gate_queue.append(V_A / np.linalg.det(V_A) ** (1 / 4))
         self.gate_queue.append(gates_A)
         self.compute_decomposition(V_B)
-        # self.gate_queue.append(V_B)
+        # self.gate_queue.append(V_B / np.linalg.det(V_B) ** (1 / 4))
         self.gate_queue.append(("H", target_qubit))
         self.gate_queue.append(gates_B)
         self.gate_queue.append(("H", target_qubit))
         self.compute_decomposition(W_B)
-        # self.gate_queue.append(W_B)
+        # self.gate_queue.append(W_B / np.linalg.det(W_B) ** (1 / 4))
         self.gate_queue.append(gates_C)
         self.compute_decomposition(W_C, leftmost_unitary = True)
-        # self.gate_queue.append(W_C)
+        # self.gate_queue.append(W_C / np.linalg.det(W_C) ** (1 / 4))
 
         
         
@@ -216,7 +221,7 @@ if __name__ == "__main__":
 
     num_qubits = 3
     U = generate_U(num_qubits)
-    U = (U / np.linalg.det(U) ** (1 / 8))
+    # U = (U / np.linalg.det(U) ** (1 / 8))
 
 
     zxz = BlockZXZ(U, coupling_map=fake_garnet)
@@ -246,8 +251,43 @@ if __name__ == "__main__":
 
     zxz.draw_circuit(qc)
     # exit()
-    zxz.print_circ_unitary(qc)
-    print(U)
+    recon = zxz.print_circ_unitary(qc)
+
+def check_equivalence_up_to_phase(u_orig, u_recon):
+    # 1. Compute the overlap (inner product)
+    # If u_orig == alpha * u_recon, then trace(u_orig^dag @ u_recon) = trace(conj(alpha) * I * 4)
+    overlap = np.trace(u_orig.conj().T @ u_recon)
+
+    # 2. The magnitude of the overlap should be equal to the dimension (4)
+    dim = u_orig.shape[0]
+    if not np.isclose(np.abs(overlap), dim, atol=1e-5):
+        print(f"FAILED: Matrices are not equivalent. Overlap magnitude: {np.abs(overlap)}")
+        return False, None
+
+    # 3. The global phase is the "angle" of the overlap
+    # We normalize by the dimension to isolate alpha
+    phase_factor = overlap / dim
+
+    print(f"SUCCESS: Matrices are equivalent.")
+    print(f"Global Phase Difference: {phase_factor:.5f}")
+
+    # Check if it is one of the SU(4) centers {1, -1, 1j, -1j}
+    if np.isclose(abs(phase_factor.real), 1) or np.isclose(abs(phase_factor.imag), 1):
+        print("Phase is a valid 4th root of unity (1, -1, i, -i).")
+        
+    return True, phase_factor
+
+# Usage in your workflow
+is_equiv, phase = check_equivalence_up_to_phase(U, recon)
+
+# To force them to match numerically for an assertion:
+if is_equiv:
+    # Adjust the reconstruction by the conjugate of the phase
+    recon_aligned = recon * np.conjugate(phase) # Or recon / phase
+    assert np.allclose(U, recon_aligned, atol=1e-8)
+    print("Assertion Passed: Matrices match exactly numerically.")
+
+    # print(U / np.linalg.det(U) ** (1 / 8))
     # recon = np.kron(I_2, V_A) @ block_diag_A @ np.kron(I_2, W_A) @ np.kron(H, V_B) @ block_diag_B @ np.kron(H, W_B) @ np.kron(I_2, V_C) @ block_diag_C @ np.kron(I_2, W_C)
 
     # print(np.allclose(recon, u))

@@ -85,3 +85,6 @@ https://arxiv.org/pdf/quant-ph/0401162
 
 For 3-CNOT unitary construction. Follow advice from Vivek to perform the diagonal extraction:
 https://arxiv.org/pdf/quant-ph/0308033
+
+Efficient decomposition of unitary matrices in quantum circuit compilers
+https://arxiv.org/pdf/2101.02993
