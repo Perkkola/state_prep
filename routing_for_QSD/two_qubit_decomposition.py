@@ -1,5 +1,5 @@
 import numpy as np
-from utils import orthogonal_congruence_diagonalize, get_zyz_angles, generate_U
+from utils import orthogonal_congruence_diagonalize, get_zyz_angles
 from pennylane.math import partial_trace
 from collections import deque
 from qiskit import QuantumCircuit
@@ -46,7 +46,7 @@ def print_circ_unitary(qc):
 
     result = simulator.run(qc).result()
     unitary = result.get_unitary(qc)
-    phase = np.linalg.det(U) ** (1 / 4)
+    # phase = np.linalg.det(U) ** (1 / 4)
 
     print("Circuit unitary:\n", np.asarray(unitary).round(5))
 
@@ -84,8 +84,8 @@ def get_single_qubit_unitaries(U_E, k_E):
     S_U = U_E @ (U_E.T)
     S_k = k_E @ (k_E.T)
 
-    A_U, D_U = orthogonal_congruence_diagonalize(S_U)
-    B_k, D_k = orthogonal_congruence_diagonalize(S_k)
+    A_U = orthogonal_congruence_diagonalize(S_U)
+    B_k = orthogonal_congruence_diagonalize(S_k)
 
 
     C = np.conjugate(k_E).T @ B_k @ A_U.T @ U_E
@@ -137,12 +137,9 @@ def extract_diagonal(u, source):
 
     a, b, c, d = get_single_qubit_unitaries(U_E, k_E)
 
-    
     # recon = np.kron(-a, b) @ kernel @ np.kron(c, d) @ cnot_1_2 @ np.kron(I, rz(-psi)) @ cnot_1_2
-    recon = np.kron(-a, b) @ kernel @ np.kron(c, d)
+    # recon = np.kron(-a, b) @ kernel @ np.kron(c, d)
     diag_u = cnot_1_2 @ np.kron(I, rz(-psi)) @ cnot_1_2
-
-    diag_gates = deque() 
 
     a_1, a_2, a_3 = get_zyz_angles(a)
     b_1, b_2, b_3 = get_zyz_angles(b)
@@ -167,40 +164,10 @@ def extract_diagonal(u, source):
     two_cnot_unitary_gates.append(('RY', b_2, source))
     two_cnot_unitary_gates.append(('RZ', b_1, source))
 
-    # qc = QuantumCircuit(2)
-    # # qc.cx(1, 0)
-    # # qc.rz(-psi, 0)
-    # # qc.cx(1, 0)
-
-    # qc.rz(c_3, 1)
-    # qc.ry(c_2, 1)
-    # qc.rz(c_1, 1)
-    # qc.rz(d_3, 0)
-    # qc.ry(d_2, 0)
-    # qc.rz(d_1, 0)
-    # qc.cx(1, 0)
-    # qc.rz(phi, 0)
-    # qc.rx(theta + np.pi, 1)
-    # qc.cx(1, 0)
-    # qc.rz(a_3, 1)
-    # qc.ry(a_2, 1)
-    # qc.rz(a_1, 1)
-    # qc.rz(b_3, 0)
-    # qc.ry(b_2, 0)
-    # qc.rz(b_1, 0)
-
-    # print(qc)
-    # # print(-1j* diag_u)
-    # # print(project_to_SU4(diag_u))
-    # print_circ_unitary(qc)
-    # # print(U)
-    # print(recon * 1j)
-    # exit()
-
     return diag_u * phase, two_cnot_unitary_gates
 
 def three_cnot_decomposition(u, source):
-    U, phase = project_to_SU4(u)
+    U, _ = project_to_SU4(u)
     gamma_U = gamma_map(U)
     eigvals = np.linalg.eigvals(gamma_U)
     angles = np.angle(eigvals)
@@ -216,7 +183,7 @@ def three_cnot_decomposition(u, source):
 
     a, b, c, d = get_single_qubit_unitaries(U_E, k_E)
 
-    recon = np.kron(a, b) @ kernel @ np.kron(c, d)
+    # recon = np.kron(a, b) @ kernel @ np.kron(c, d)
 
     a_1, a_2, a_3 = get_zyz_angles(a)
     b_1, b_2, b_3 = get_zyz_angles(b)
@@ -243,35 +210,4 @@ def three_cnot_decomposition(u, source):
     three_cnot_unitary_gates.append(('RY', b_2, source))
     three_cnot_unitary_gates.append(('RZ', b_1, source))
 
-    # qc = QuantumCircuit(2)
-    # qc.rz(c_3, 1)
-    # qc.ry(c_2, 1)
-    # qc.rz(c_1, 1)
-    # qc.rz(d_3, 0)
-    # qc.ry(d_2, 0)
-    # qc.rz(d_1, 0)
-    # qc.cx(0, 1)
-
-    # qc.rz(delta, 1)
-    # qc.ry(beta, 0)
-    # qc.cx(1, 0)
-    # qc.ry(alpha, 0)
-
-    # qc.cx(0, 1)
-    # qc.rz(a_3, 1)
-    # qc.ry(a_2, 1)
-    # qc.rz(a_1, 1)
-    # qc.rz(b_3, 0)
-    # qc.ry(b_2, 0)
-    # qc.rz(b_1, 0)
-
-    # print(qc)
-    # print_circ_unitary(qc)
-    # print(recon)
-    # print(U)
-    # print(u)
     return three_cnot_unitary_gates
-
-U = generate_U(2)
-three_cnot_decomposition(U, 0)
-# extract_diagonal(U, 0)

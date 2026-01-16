@@ -160,19 +160,7 @@ def orthogonal_congruence_diagonalize(S, tol_eig=1e-8):
         Q_final[:, 0] = -Q_final[:, 0]
 
     A = Q_final   # real orthogonal
-
-    # 4) compute diagonal via congruence
-    D = A.T @ S @ A
-
-    # zero-out tiny off-diagonals
-    off = D.copy()
-    for i in range(4):
-        for j in range(4):
-            if i != j and abs(off[i, j]) < 1e-10:
-                off[i, j] = 0.0
-    D = off
-
-    return A, D
+    return A
 
 def compute_csd(U, tol=1e-12):
     n = U.shape[0] // 2
@@ -394,3 +382,23 @@ def get_zyz_angles(U):
         lam = (sum_phases - diff_phases) / 2
         
     return phi, theta, lam
+
+def check_equivalence_up_to_phase(u_orig, u_recon):
+    # 1. Compute the overlap (inner product)
+    # If u_orig == alpha * u_recon, then trace(u_orig^dag @ u_recon) = trace(conj(alpha) * I * 4)
+    overlap = np.trace(u_orig.conj().T @ u_recon)
+
+    # 2. The magnitude of the overlap should be equal to the dimension (4)
+    dim = u_orig.shape[0]
+    if not np.isclose(np.abs(overlap), dim, atol=1e-5):
+        print(f"FAILED: Matrices are not equivalent. Overlap magnitude: {np.abs(overlap)}")
+        return False, None
+
+    # 3. The global phase is the "angle" of the overlap
+    # We normalize by the dimension to isolate alpha
+    phase_factor = overlap / dim
+
+    print(f"SUCCESS: Matrices are equivalent.")
+    print(f"Global Phase Difference: {phase_factor:.5f}")
+        
+    return True, phase_factor
