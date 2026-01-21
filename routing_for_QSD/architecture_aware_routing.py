@@ -395,10 +395,10 @@ if __name__ == "__main__":
     transformed_angles = list(möttönen_transformation(angles))
 
 
-    routed_multiplexer = RoutedMultiplexer(multiplexer_angles= transformed_angles, coupling_map= fake_garnet)
+    routed_multiplexer = RoutedMultiplexer(multiplexer_angles= transformed_angles, coupling_map= fake_cairo.coupling_map)
     cx_count = routed_multiplexer.execute_gates()
     qc = routed_multiplexer.get_circuit()
-    print(routed_multiplexer.grey_to_arch_map)
-    routed_multiplexer.draw_circuit(qc)
+    # print(routed_multiplexer.grey_to_arch_map)
+    routed_multiplexer.draw_circuit(qc, "figure_1.png")
     # routed_multiplexer.print_circ_unitary(qc)
     print(f"Number of cx: {cx_count}")

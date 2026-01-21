@@ -15,7 +15,7 @@ import sys
 import json
 import time
 from collections import deque
-from utils import get_grey_gates, generate_random_rz_multiplexer_unitary, extract_single_qubit_unitaries, extract_angles, clean_matrix, is_unitary, möttönen_transformation
+from utils import get_grey_gates, generate_random_rz_multiplexer_unitary,generate_random_rz_multiplexer_unitary_fast, extract_single_qubit_unitaries, extract_angles, clean_matrix, is_unitary, möttönen_transformation, random_angles
 from architecture_aware_routing import RoutedMultiplexer
 from pauliopt.phase.phase_circuits import PhaseGadget, PhaseCircuit, Z, X
 from pauliopt.phase.optimized_circuits import OptimizedPhaseCircuit
@@ -306,12 +306,17 @@ if __name__ == "__main__":
     num_qubits = int(sys.argv[1])
     assert num_qubits > 1
 
-    multiplexor_unitary = generate_random_rz_multiplexer_unitary(num_qubits)
-    print(multiplexor_unitary)
+    # multiplexor_unitary = generate_random_rz_multiplexer_unitary_fast(num_qubits)
+    # print(multiplexor_unitary)
 
-    single_qubit_unitaries = list(extract_single_qubit_unitaries(multiplexor_unitary))
-    angles = list(extract_angles(single_qubit_unitaries))
+    # single_qubit_unitaries = list(extract_single_qubit_unitaries(multiplexor_unitary))
+    single_qubit_unitaries = [np.array([[math.cos(phi) - 1j*math.sin(phi), 0],
+                        [0, math.cos(phi) + 1j*math.sin(phi)]]) for phi in range(2 ** (num_qubits - 1))]
+    # angles = list(extract_angles(single_qubit_unitaries))
+    angles = random_angles(num_qubits)
     transformed_angles = list(möttönen_transformation(angles))
+
+    # print("done")
 
     coupling_map = None
     backend = None
@@ -343,11 +348,11 @@ if __name__ == "__main__":
 
     # print(multiplexor_unitary)
     # print("///////////////////")
-    qn = QiskitNative(num_qubits, coupling_map=coupling_map, multiplexer=single_qubit_unitaries, print_unitary= True)
+    qn = QiskitNative(num_qubits, coupling_map=coupling_map, multiplexer=single_qubit_unitaries, print_unitary= False)
     qc = qn.generate_circuit(mux_simp=False)
     qn_cx_count = qn.count_cx(qc)
 
-    qg = QiskitGray(num_qubits, coupling_map=coupling_map, multiplexer=transformed_angles, print_unitary=True, reverse=True)
+    qg = QiskitGray(num_qubits, coupling_map=coupling_map, multiplexer=transformed_angles, print_unitary=False, reverse=True)
     qc2 = qg.generate_circuit()
     qg_cx_count = qg.count_cx(qc2)
 
@@ -355,26 +360,26 @@ if __name__ == "__main__":
     proposed = RoutedMultiplexer(multiplexer_angles=transformed_angles, coupling_map=coupling_map, num_qubits=num_qubits)
     p_cx_count = proposed.execute_gates()
     qc_p = proposed.get_circuit()
-    proposed.print_circ_unitary(qc_p)
+    # proposed.print_circ_unitary(qc_p)
     grey_to_arch_map = proposed.grey_to_arch_map
 
     sg = SteinerSynth(num_qubits, coupling_map, multiplexer= transformed_angles)
     qc3 = sg.generate_circuit(grey_to_arch_map=grey_to_arch_map)
     sg_cx_count = sg.count_cx(qc3)
     
-    tg = TKetGray(num_qubits, backend=backend, multiplexer=transformed_angles, print_unitary=True)
-    qc4 = tg.generate_circuit()
-    tg_cx_count = tg.count_cx(qc4)
+    # tg = TKetGray(num_qubits, backend=backend, multiplexer=transformed_angles, print_unitary=False)
+    # qc4 = tg.generate_circuit()
+    # tg_cx_count = tg.count_cx(qc4)
 
-    tn = TketNative(num_qubits, backend=backend, multiplexer=angles, print_unitary= True)
-    qc5 = tn.generate_circuit()
-    tn_cx_count = tn.count_cx(qc5)
+    # tn = TketNative(num_qubits, backend=backend, multiplexer=angles, print_unitary= False)
+    # qc5 = tn.generate_circuit()
+    # tn_cx_count = tn.count_cx(qc5)
 
 
     
     print(f"Qiskit native UCGate CX count: {qn_cx_count}")
     print(f"Qiskit with gray code multiplexor CX count: {qg_cx_count}")
     print(f"Steiner-Gray CX count: {sg_cx_count}")
-    print(f"Tket with gray code CX count: {tg_cx_count}")
-    print(f"Tket native Multiplexor CX count: {tg_cx_count}")
+    # print(f"Tket with gray code CX count: {tg_cx_count}")
+    # print(f"Tket native Multiplexor CX count: {tn_cx_count}")
     print(f"Proposed method CX count: {p_cx_count}")
