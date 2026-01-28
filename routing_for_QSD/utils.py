@@ -8,6 +8,8 @@ import sys
 import math
 import multiprocessing
 from multiprocessing import shared_memory
+from a_star import BasicAStar
+
 
 np.set_printoptions(threshold=sys.maxsize, linewidth=sys.maxsize)
 
@@ -402,3 +404,15 @@ def check_equivalence_up_to_phase(u_orig, u_recon):
     print(f"Global Phase Difference: {phase_factor:.5f}")
         
     return True, phase_factor
+
+def get_subset_of_neighbors(neighbors, subset_nodes):
+        subset = neighbors.copy()
+        for key in neighbors.copy().keys():
+            if key not in subset_nodes: subset.pop(key)
+            else: subset[key] = subset[key].intersection(subset_nodes)
+        return subset
+    
+def get_path(neighbors, subset_nodes, source, target):
+    new_neighbors = get_subset_of_neighbors(neighbors, subset_nodes)
+    AStar = BasicAStar(new_neighbors)
+    return AStar.astar(source, target)
