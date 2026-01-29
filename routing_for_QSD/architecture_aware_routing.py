@@ -30,7 +30,7 @@ class RoutedMultiplexer(object):
         if self.coupling_map == None: self.coupling_map = [[x, y] for x in range(self.num_qubits) for y in range(self.num_qubits) if x != y]
 
         self.neighbors = self.get_neighbors()
-        self.vertices = self.neighbors.copy().keys()
+        self.vertices = list(self.neighbors.copy().keys())
 
         assert len(self.vertices) >= self.num_qubits, "Not enough qubits on the hardware."
     
@@ -93,6 +93,18 @@ class RoutedMultiplexer(object):
                 optimal_neighborhoods.append(paths)
 
         return optimal_neighborhoods
+    
+    def recompute_optimal_neighborhood(self):
+        new_optimal_neighborhood = {}
+
+        for node in self.optimal_neighborhood.keys():
+            path = list(get_path(self.neighbors, self.arch_qubits, self.root, node))
+            new_optimal_neighborhood[node] = path
+        self.optimal_neighborhood = new_optimal_neighborhood
+
+        self.arch_to_grey_map = {}
+        for key, value in self.grey_to_arch_map.items():
+            self.arch_to_grey_map[value] = key
 
     def map_grey_qubits_to_arch(self, set_last_two_adjacent):
         optimal_neighborhood = self.find_optimal_neighborhood()[0]
@@ -117,13 +129,8 @@ class RoutedMultiplexer(object):
             self.root = grey_to_arch_map[self.num_controls]
             self.grey_to_arch_map = grey_to_arch_map
             self.arch_qubits = list(grey_to_arch_map.values()).copy()
+            self.recompute_optimal_neighborhood()
 
-            new_optimal_neighborhood = {}
-
-            for node in self.optimal_neighborhood.keys():
-                path = list(get_path(self.neighbors, self.arch_qubits, self.root, node))
-                new_optimal_neighborhood[node] = path
-            self.optimal_neighborhood = new_optimal_neighborhood
         else:
             furthest_node = furthest_node_path[-1]
             closest_node = furthest_node_path[1]
@@ -150,6 +157,7 @@ class RoutedMultiplexer(object):
             self.grey_to_arch_map = grey_to_arch_map
             self.arch_qubits = list(grey_to_arch_map.values()).copy()
 
+        self.furthest_node = furthest_node
         self.arch_to_grey_map = {}
 
         for key, value in self.grey_to_arch_map.items():
@@ -229,8 +237,9 @@ class RoutedMultiplexer(object):
             ignore = False if dist > 1 else True
             self.long_range_cnot(arch_path, False)
 
-    def execute_gates(self, set_last_two_adjacent):
-        self.map_grey_qubits_to_arch(set_last_two_adjacent)
+    def execute_gates(self, set_last_two_adjacent, execute_only):
+        if not execute_only: self.map_grey_qubits_to_arch(set_last_two_adjacent)
+
         grey_gates, grey_state_queue = get_grey_gates(self.num_controls, False, True, True)
 
         self.pp_terms = set([x for x in range(2 ** self.num_controls, 2 ** self.num_qubits)])
@@ -267,11 +276,11 @@ class RoutedMultiplexer(object):
         if self.state != init_state:
             print("State was not reset correctly!")
 
-        
+        self.cx_count = circuit_length
         return circuit_length
 
-    def map_grey_gates_to_arch(self, set_last_two_adjacent = True):
-        self.execute_gates(set_last_two_adjacent)
+    def map_grey_gates_to_arch(self, set_last_two_adjacent = True, execute_only = False):
+        self.execute_gates(set_last_two_adjacent, execute_only)
         grey_gates = self.gate_queue.copy()
         arch_gates = deque()
 
@@ -315,7 +324,18 @@ class RoutedMultiplexer(object):
     def run(self):
         self.map_grey_gates_to_arch()
 
-
+    def copy(self):
+        cp = RoutedMultiplexer(list(self.multiplexer_angles.copy()), self.coupling_map.copy(), self.num_qubits, self.reverse)
+        cp.num_controls = self.num_controls
+        cp.neighbors = self.neighbors.copy()
+        cp.vertices = self.vertices.copy()
+        cp.root = self.root
+        cp.arch_to_grey_map = self.arch_to_grey_map.copy()
+        cp.grey_to_arch_map = self.grey_to_arch_map.copy()
+        cp.arch_gates = self.arch_gates.copy()
+        cp.arch_qubits = self.arch_qubits.copy()
+        cp.optimal_neighborhood = self.optimal_neighborhood.copy()
+        return cp
 
     def draw_backend(self, planar = False, filename = None):
         G = nx.Graph()
