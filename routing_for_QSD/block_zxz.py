@@ -179,19 +179,19 @@ class BlockZXZ(object):
             gates_A = self.routed_multiplexer.replace_mapped_angles(transformed_angles_A, True)
 
             cx_gates_merged = 0
-            # while True:
-            #     popped_gate = gates_C.pop()
-            #     if popped_gate[0] == "RZ":
-            #         gates_C.append(popped_gate)
-            #         break
+            while True:
+                popped_gate = gates_C.pop()
+                if popped_gate[0] == "RZ":
+                    gates_C.append(popped_gate)
+                    break
 
-            #     gates_A.popleft()
-            #     unitary = self.get_cnot_unitary(num_qubits, popped_gate)
+                gates_A.popleft()
+                unitary = self.get_cnot_unitary(num_qubits, popped_gate)
 
-            #     if popped_gate[1] == target_qubit: unitary = np.kron(H, I) @ unitary @ np.kron(H, I) #Position of H might vary
+                if popped_gate[1] == target_qubit: unitary = np.kron(H, I) @ unitary @ np.kron(H, I) #Position of H might vary
 
-            #     B_tilde = unitary @ B_tilde @ unitary
-            #     cx_gates_merged += 1
+                B_tilde = unitary @ B_tilde @ unitary
+                cx_gates_merged += 1
 
             B_11 = B_tilde[:block_len, :block_len]
             B_22 = B_tilde[block_len:, block_len:]
@@ -222,25 +222,52 @@ class BlockZXZ(object):
         if len(path_to_furthest) >= 3:
 
             for i in range(len(path_to_furthest) - 2):
-                root = path_to_furthest[0]
-                swap_root_to = path_to_furthest[i + 1]
-
+                original_grey_to_arch = self.routed_multiplexer.grey_to_arch_map.copy()
                 new_grey_to_arch_map = self.routed_multiplexer.grey_to_arch_map.copy()
-                new_grey_to_arch_map[root] = self.routed_multiplexer.grey_to_arch_map[swap_root_to]
-                new_grey_to_arch_map[swap_root_to] = self.routed_multiplexer.grey_to_arch_map[root]
+                new_grey_to_arch_map_temp = self.routed_multiplexer.grey_to_arch_map.copy()
 
-                self.routed_multiplexer.root = swap_root_to
+
+                for j in range(i + 1):
+
+                    node = path_to_furthest[j]
+                    swap_node_to = path_to_furthest[j + 1]
+                    new_grey_to_arch_map[node] = new_grey_to_arch_map_temp[swap_node_to]
+                    new_grey_to_arch_map[swap_node_to] = new_grey_to_arch_map_temp[node]
+                    new_grey_to_arch_map_temp = new_grey_to_arch_map.copy()
+
+
+
+
+                self.routed_multiplexer.root = path_to_furthest[i + 1]
                 self.routed_multiplexer.grey_to_arch_map = new_grey_to_arch_map
                 self.routed_multiplexer.recompute_optimal_neighborhood()
 
+                swap_map = {x: self.routed_multiplexer.arch_to_grey_map[original_grey_to_arch[x]] for x in range(num_qubits)}
+
                 gates_A, gates_C, V_B, gates_B, W_B, _, current_recursion_level_cx_count = compute_multiplexers(B_tilde, execute_only=True)
                 cx_count_after_swaps = current_recursion_level_cx_count + (2 * (i + 1) * 3) * 3
-                if cx_count_after_swaps < 100:
+                if cx_count_after_swaps < optimal_cx_count:
                     self.swaps_per_level[recursion_level] = path_to_furthest[:i+3]
                     optimal_cx_count = current_recursion_level_cx_count
-                    optimal_gates_A = gates_A
-                    optimal_gates_B = gates_B
-                    optimal_gates_C = gates_C
+
+
+                    new_gates_A = deque()
+                    new_gates_B = deque()
+                    new_gates_C = deque()
+
+                    for gate in gates_A:
+                        if gate[0] == "RZ": new_gates_A.append(("RZ", gate[1], swap_map[gate[2]]))
+                        else: new_gates_A.append((swap_map[gate[0]], swap_map[gate[1]]))
+                    for gate in gates_B:
+                        if gate[0] == "RZ": new_gates_B.append(("RZ", gate[1], swap_map[gate[2]]))
+                        else: new_gates_B.append((swap_map[gate[0]], swap_map[gate[1]]))
+                    for gate in gates_C:
+                        if gate[0] == "RZ": new_gates_C.append(("RZ", gate[1], swap_map[gate[2]]))
+                        else: new_gates_C.append((swap_map[gate[0]], swap_map[gate[1]]))
+
+                    optimal_gates_A = new_gates_A
+                    optimal_gates_B = new_gates_B
+                    optimal_gates_C = new_gates_C
                     optimal_V_B = V_B
                     optimal_W_B = W_B
 
@@ -258,12 +285,12 @@ class BlockZXZ(object):
 
 
         #THIS IS REVERSED FOR A REASON
-        self.compute_decomposition(V_A, rightmost_unitary = True, recursion_level = recursion_level + 1)
+        self.compute_decomposition(V_A, rightmost_unitary = True, leftmost_unitary=False, recursion_level = recursion_level + 1)
         # self.gate_queue.append((V_A, "V_A"))
         if self.swaps_per_level[recursion_level] != None: self.swap_to_adjacent(self.swaps_per_level[recursion_level], reverse = True)
         self.gate_queue.append(optimal_gates_A)
         if self.swaps_per_level[recursion_level] != None: self.swap_to_adjacent(self.swaps_per_level[recursion_level], reverse = False)
-        self.compute_decomposition(optimal_V_B, recursion_level = recursion_level + 1)
+        self.compute_decomposition(optimal_V_B, rightmost_unitary = False, leftmost_unitary=False, recursion_level = recursion_level + 1)
         # self.gate_queue.append((V_B, "V_B"))
         self.gate_queue.append(("H", target_qubit))
         # self.gate_queue.append(("CX", (0, 1)))
@@ -271,12 +298,12 @@ class BlockZXZ(object):
         self.gate_queue.append(optimal_gates_B)
         if self.swaps_per_level[recursion_level] != None: self.swap_to_adjacent(self.swaps_per_level[recursion_level], reverse = False)
         self.gate_queue.append(("H", target_qubit))
-        self.compute_decomposition(optimal_W_B, recursion_level = recursion_level + 1)
+        self.compute_decomposition(optimal_W_B, rightmost_unitary = False, leftmost_unitary=False,  recursion_level = recursion_level + 1)
         # self.gate_queue.append((W_B, "W_B"))
         if self.swaps_per_level[recursion_level] != None: self.swap_to_adjacent(self.swaps_per_level[recursion_level], reverse = True)
         self.gate_queue.append(optimal_gates_C)
         if self.swaps_per_level[recursion_level] != None: self.swap_to_adjacent(self.swaps_per_level[recursion_level], reverse = False)
-        self.compute_decomposition(W_C, leftmost_unitary = True, recursion_level = recursion_level + 1)
+        self.compute_decomposition(W_C, rightmost_unitary = False, leftmost_unitary = True, recursion_level = recursion_level + 1)
         # self.gate_queue.append((W_C, "W_C"))
 
 if __name__ == "__main__":
@@ -284,15 +311,15 @@ if __name__ == "__main__":
         fake_garnet = json.load(f)
 
     num_qubits = 3
-    # U = generate_U(num_qubits)
-    U = np.array([[-0.12145768+0.00207613j, -0.32113457-0.29679609j,  0.47736931+0.02039224j, -0.21817659-0.47238552j,  0.05000757+0.19673254j,  0.08622619+0.39340325j, -0.16360049+0.06469137j, -0.22902861-0.09040058j],
- [ 0.31879968+0.08690366j,  0.21073824-0.39656049j,  0.22336564+0.14242958j,  0.17445736-0.00652138j,  0.30561294-0.09772313j,  0.57015456-0.09594228j,  0.35633014+0.03428243j,  0.14184123+0.05469723j],
- [ 0.36880988-0.04777115j,  0.08540634+0.32329978j, -0.12048505+0.25137414j, -0.12698383-0.40971248j,  0.1201848 -0.44950679j, -0.12119703+0.02088084j,  0.15988069+0.12339056j, -0.46268851+0.04113649j],
- [ 0.18149905-0.03969517j,  0.33711362+0.29644427j,  0.44663305-0.3863337j , -0.04381689-0.10305776j, -0.05250974+0.08701042j, -0.23284859+0.03998177j,  0.26711512+0.16894098j,  0.26068896-0.41071472j],
- [-0.23018696+0.40601539j, -0.21211545-0.13679973j,  0.01115239+0.16527005j, -0.22717664+0.10708209j,  0.13213307-0.04300124j, -0.40017897+0.05719932j,  0.64126169-0.17369612j,  0.05547983+0.02749252j],
- [-0.3546627 +0.04873786j,  0.31627012+0.26864316j,  0.11693279-0.08815455j,  0.10279158-0.3720337j ,  0.40222237+0.1567866j ,  0.01427172-0.18082565j, -0.06089811-0.45041062j,  0.00891598+0.32140178j],
- [ 0.26052849-0.29025084j, -0.1532354 +0.08422461j, -0.41683829+0.14745946j, -0.31996902-0.29263119j,  0.12987615+0.3216078j ,  0.06837351+0.14591191j,  0.097738  -0.12447958j,  0.51053258-0.04285834j],
- [ 0.09605175-0.44260106j, -0.1285551 -0.10376751j,  0.1230578 -0.12473628j,  0.19765844+0.25121693j,  0.53639673-0.12378883j, -0.37812523+0.25945244j, -0.04596453+0.15842672j,  0.07272894+0.29809803j]])
+    U = generate_U(num_qubits)
+#     U = np.array([[-0.12145768+0.00207613j, -0.32113457-0.29679609j,  0.47736931+0.02039224j, -0.21817659-0.47238552j,  0.05000757+0.19673254j,  0.08622619+0.39340325j, -0.16360049+0.06469137j, -0.22902861-0.09040058j],
+#  [ 0.31879968+0.08690366j,  0.21073824-0.39656049j,  0.22336564+0.14242958j,  0.17445736-0.00652138j,  0.30561294-0.09772313j,  0.57015456-0.09594228j,  0.35633014+0.03428243j,  0.14184123+0.05469723j],
+#  [ 0.36880988-0.04777115j,  0.08540634+0.32329978j, -0.12048505+0.25137414j, -0.12698383-0.40971248j,  0.1201848 -0.44950679j, -0.12119703+0.02088084j,  0.15988069+0.12339056j, -0.46268851+0.04113649j],
+#  [ 0.18149905-0.03969517j,  0.33711362+0.29644427j,  0.44663305-0.3863337j , -0.04381689-0.10305776j, -0.05250974+0.08701042j, -0.23284859+0.03998177j,  0.26711512+0.16894098j,  0.26068896-0.41071472j],
+#  [-0.23018696+0.40601539j, -0.21211545-0.13679973j,  0.01115239+0.16527005j, -0.22717664+0.10708209j,  0.13213307-0.04300124j, -0.40017897+0.05719932j,  0.64126169-0.17369612j,  0.05547983+0.02749252j],
+#  [-0.3546627 +0.04873786j,  0.31627012+0.26864316j,  0.11693279-0.08815455j,  0.10279158-0.3720337j ,  0.40222237+0.1567866j ,  0.01427172-0.18082565j, -0.06089811-0.45041062j,  0.00891598+0.32140178j],
+#  [ 0.26052849-0.29025084j, -0.1532354 +0.08422461j, -0.41683829+0.14745946j, -0.31996902-0.29263119j,  0.12987615+0.3216078j ,  0.06837351+0.14591191j,  0.097738  -0.12447958j,  0.51053258-0.04285834j],
+#  [ 0.09605175-0.44260106j, -0.1285551 -0.10376751j,  0.1230578 -0.12473628j,  0.19765844+0.25121693j,  0.53639673-0.12378883j, -0.37812523+0.25945244j, -0.04596453+0.15842672j,  0.07272894+0.29809803j]])
     zxz = BlockZXZ(coupling_map=fake_garnet)
     U = BlockZXZ.get_closest_unitary(U)
     zxz.compute_decomposition(U, init = True)
