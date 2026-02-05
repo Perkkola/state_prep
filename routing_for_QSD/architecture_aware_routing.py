@@ -34,6 +34,13 @@ class RoutedMultiplexer(object):
 
         assert len(self.vertices) >= self.num_qubits, "Not enough qubits on the hardware."
     
+    def __str__(self):
+        has_grey_to_arch = hasattr(self, "grey_to_arch_map")
+        has_arch_to_grey = hasattr(self, "arch_to_grey_map")
+        has_root = hasattr(self, "root")
+        has_optimal_neighborhood = hasattr(self, "optimal_neighborhood")
+        return f"Num_qubits: {self.num_qubits}, Root: {self.root if has_root else None}, Grey_to_arch: {self.grey_to_arch_map if has_grey_to_arch else None}, Arch_to_grey: {self.arch_to_grey_map if has_arch_to_grey else None}, Optimal_neighborhood: {self.optimal_neighborhood if has_optimal_neighborhood else None}"
+
     def get_neighbors(self):
         neighbors = {}
         for edge in self.coupling_map:
@@ -102,9 +109,6 @@ class RoutedMultiplexer(object):
             new_optimal_neighborhood[node] = path
         self.optimal_neighborhood = new_optimal_neighborhood
 
-        self.arch_to_grey_map = {}
-        for key, value in self.grey_to_arch_map.items():
-            self.arch_to_grey_map[value] = key
 
     def map_grey_qubits_to_arch(self, set_last_two_adjacent):
         optimal_neighborhood = self.find_optimal_neighborhood()[0]
@@ -130,6 +134,10 @@ class RoutedMultiplexer(object):
             self.grey_to_arch_map = grey_to_arch_map
             self.arch_qubits = list(grey_to_arch_map.values()).copy()
             self.recompute_optimal_neighborhood()
+
+            self.arch_to_grey_map = {}
+            for key, value in self.grey_to_arch_map.items():
+                self.arch_to_grey_map[value] = key
 
         else:
             furthest_node = furthest_node_path[-1]
@@ -326,10 +334,12 @@ class RoutedMultiplexer(object):
 
     def copy(self):
         cp = RoutedMultiplexer(list(self.multiplexer_angles.copy()), self.coupling_map.copy(), self.num_qubits, self.reverse)
+        cp.num_qubits = self.num_qubits
         cp.num_controls = self.num_controls
         cp.neighbors = self.neighbors.copy()
         cp.vertices = self.vertices.copy()
         cp.root = self.root
+        cp.furthest_node = self.furthest_node
         cp.arch_to_grey_map = self.arch_to_grey_map.copy()
         cp.grey_to_arch_map = self.grey_to_arch_map.copy()
         cp.arch_gates = self.arch_gates.copy()

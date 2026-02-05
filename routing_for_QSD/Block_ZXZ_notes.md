@@ -1,5 +1,0 @@
-1. Decompose the multiplexer using the architecture aware routing alg. 
-2. Check for CX gates in the end. All of these (confirm) can be absorbed into the middle controlled B gate.
-3. Next, (recursively) decompose the new W_C, V_C, W_A and V_A gates.
-4. This is where things get tricky. My hypothesis is that SWAPping the new target qubit to the "center" is more efficient than not SWAPping and just employing long range CX gates. However, SWAPs need to be performed for each of the sub-unitaries. This might be more costly after all. Benchmark for CX count. Perhaps some SWAPs are efficient and some are not? This requires more investigation.
-5. Continue recursion until two qubits gates remain. It should be possible to apply the diagonal extraction optimization. However, we might need some SWAPs for this as well. Investigate this. Maybe the order we select the new target qubits matters? Either way, the two qubit gates need to be performed on adjacent qubits, otherwise it will be too expensive...
