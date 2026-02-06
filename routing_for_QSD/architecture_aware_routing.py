@@ -31,6 +31,7 @@ class RoutedMultiplexer(object):
 
         self.neighbors = self.get_neighbors()
         self.vertices = list(self.neighbors.copy().keys())
+        self._num_qubits = self.num_qubits
 
         assert len(self.vertices) >= self.num_qubits, "Not enough qubits on the hardware."
     
@@ -127,9 +128,11 @@ class RoutedMultiplexer(object):
             grey_to_arch_map[0] = furthest_node
             grey_to_arch_map[1] = second_furthest_node
 
+
             for key, grey_key in zip(list(optimal_neighborhood.keys()), range(self.num_controls, 1, -1)):
                 grey_to_arch_map[grey_key] = key
 
+            
             self.root = grey_to_arch_map[self.num_controls]
             self.grey_to_arch_map = grey_to_arch_map
             self.arch_qubits = list(grey_to_arch_map.values()).copy()
@@ -138,7 +141,6 @@ class RoutedMultiplexer(object):
             self.arch_to_grey_map = {}
             for key, value in self.grey_to_arch_map.items():
                 self.arch_to_grey_map[value] = key
-
         else:
             furthest_node = furthest_node_path[-1]
             closest_node = furthest_node_path[1]
@@ -180,7 +182,7 @@ class RoutedMultiplexer(object):
             self.gate_queue.append(cnot)
         
         if cnot[1] == self.num_controls:
-            if self.state[self.num_controls] not in self.discovered_pp_terms:
+            if self.state[self.num_controls] not in self.discovered_pp_terms and self.state[self.num_controls] in self.pp_terms:
                 self.discovered_pp_terms.add(self.state[self.num_controls])
                 self.gate_queue.append(("RZ", self.state_to_angle_dict[self.state[self.num_controls]], self.num_controls))
             elif ignore and self.state[self.num_controls] in self.discovered_pp_terms:
@@ -252,7 +254,7 @@ class RoutedMultiplexer(object):
 
         self.pp_terms = set([x for x in range(2 ** self.num_controls, 2 ** self.num_qubits)])
         self.discovered_pp_terms = set([2 ** self.num_controls])
-        self.state = {q: 1 << q for q in range(self.num_qubits)}
+        self.state = {q: 1 << q for q in range(self._num_qubits)}
         self.state_to_angle_dict = dict(zip(grey_state_queue, self.multiplexer_angles))
         init_state = self.state.copy()
 
@@ -335,6 +337,7 @@ class RoutedMultiplexer(object):
     def copy(self):
         cp = RoutedMultiplexer(list(self.multiplexer_angles.copy()), self.coupling_map.copy(), self.num_qubits, self.reverse)
         cp.num_qubits = self.num_qubits
+        cp._num_qubits = self._num_qubits
         cp.num_controls = self.num_controls
         cp.neighbors = self.neighbors.copy()
         cp.vertices = self.vertices.copy()
