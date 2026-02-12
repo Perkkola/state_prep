@@ -8,7 +8,7 @@ import json
 with open(f"coupling_maps/fake_garnet.json") as f:
         fake_garnet = json.load(f)
 
-num_qubits = 6
+num_qubits = 7
 
 U = generate_U(num_qubits)
 

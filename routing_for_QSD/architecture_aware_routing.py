@@ -1,4 +1,5 @@
 from collections import deque
+from functools import reduce
 from qiskit.circuit import QuantumCircuit, QuantumRegister
 from qiskit_ibm_runtime.fake_provider import FakeCairoV2
 from qiskit.compiler import transpile
@@ -31,7 +32,6 @@ class RoutedMultiplexer(object):
 
         self.neighbors = self.get_neighbors()
         self.vertices = list(self.neighbors.copy().keys())
-        self._num_qubits = self.num_qubits
 
         assert len(self.vertices) >= self.num_qubits, "Not enough qubits on the hardware."
     
@@ -99,7 +99,75 @@ class RoutedMultiplexer(object):
                 best_dist_cost = dist_cost
             elif dist_cost == best_dist_cost:
                 optimal_neighborhoods.append(paths)
+        return optimal_neighborhoods
+    
+    def get_multiplexer_cost(self, size, qubits, arch_to_grey, candidate):
+        cnots = {(self.num_controls, self.num_controls -1): 2}
+        for i in range(size - 2):
+            cnots[(self.num_controls, self.num_controls - 2 - i)] = 2
+            for j in range(i):
+                cnots[(self.num_controls, self.num_controls - 1 - j)] *= 2
 
+        cost_sum = 0
+        for key, value in arch_to_grey.items():
+            if key == candidate: continue
+            path = get_path(self.neighbors, qubits, candidate, key)
+            dist = len(list(path)) - 1
+            long_range_cnot_cost = 4 * dist - 4 if dist >= 2 else 1
+            cost_sum += long_range_cnot_cost * cnots[(arch_to_grey[candidate], value)]
+        return cost_sum
+    
+    def find_optimal_neighborhood_unitary_synth(self):
+        optimal_neighborhoods = []
+        best_total_cost = 2 ** 31
+
+        for root in self.vertices:
+            best_set = [[{root: [root]}, set([root]), {root: self.num_controls}]]
+            current_multiplexer_size = 2
+            found_neighborhood = False
+            neighborhood_cost = 0
+            
+            while not found_neighborhood:
+                best_cost =  2 ** 31
+                best_candidates = []
+                for s in best_set:
+                    paths, vertices_in_neighborhood, arch_to_grey = s[0], s[1], s[2]
+                    candidates = reduce(lambda x, y: x.union(self.neighbors[y]), list(vertices_in_neighborhood), set()) - vertices_in_neighborhood
+                    for candidate in candidates:
+                        paths_copy = paths.copy()
+                        arch_to_grey_copy = arch_to_grey.copy()
+                        vertices_in_neighborhood_copy = vertices_in_neighborhood.copy()
+
+                        for key in arch_to_grey_copy.keys():
+                            arch_to_grey_copy[key] -= 1
+
+                        arch_to_grey_copy[candidate] = self.num_controls
+                        vertices_in_neighborhood_copy.add(candidate)
+                        cost = self.get_multiplexer_cost(current_multiplexer_size, vertices_in_neighborhood_copy, arch_to_grey_copy, candidate)
+                        
+
+                        if cost < best_cost:
+                            best_cost = cost
+                            new_path = get_path(self.neighbors, vertices_in_neighborhood_copy, root, candidate)
+                            paths_copy[candidate] = list(new_path)
+                            best_candidates = [[paths_copy, vertices_in_neighborhood_copy, arch_to_grey_copy.copy()]]
+
+                        elif cost == best_cost:
+                            new_path = get_path(self.neighbors, vertices_in_neighborhood_copy, root, candidate)
+                            paths_copy[candidate] = list(new_path)
+                            best_candidates.append([paths_copy, vertices_in_neighborhood_copy, arch_to_grey_copy.copy()])
+        
+                neighborhood_cost += best_cost
+                current_multiplexer_size += 1
+                best_set = best_candidates.copy()
+                if current_multiplexer_size > self.num_qubits: 
+                    if neighborhood_cost < best_total_cost:
+                        best_total_cost = neighborhood_cost
+                        optimal_neighborhoods = [(s[0].copy(), s[2].copy()) for s in best_set]
+                    elif neighborhood_cost == best_total_cost:
+                        for s in best_set:
+                            optimal_neighborhoods.append((s[0].copy(), s[2].copy()))
+                    found_neighborhood = True
         return optimal_neighborhoods
     
     def recompute_optimal_neighborhood(self):
@@ -110,62 +178,46 @@ class RoutedMultiplexer(object):
             new_optimal_neighborhood[node] = path
         self.optimal_neighborhood = new_optimal_neighborhood
 
+    def map_grey_qubits_to_arch_unitary_synth(self):
+        self.optimal_neighborhood, self.arch_to_grey_map = self.find_optimal_neighborhood_unitary_synth()[0]
 
-    def map_grey_qubits_to_arch(self, set_last_two_adjacent):
+        self.grey_to_arch_map = {}
+        for key, value in self.arch_to_grey_map.items():
+            self.grey_to_arch_map[value] = key
+
+        print(self.grey_to_arch_map)
+        print(self.arch_to_grey_map)
+        print(self.optimal_neighborhood)
+
+    def map_grey_qubits_to_arch(self):
         optimal_neighborhood = self.find_optimal_neighborhood()[0]
         self.optimal_neighborhood = optimal_neighborhood.copy()
         furthest_node_path = list(optimal_neighborhood.values())[-1]
 
-        
-        if set_last_two_adjacent:
-            furthest_node = furthest_node_path[-1]
-            second_furthest_node = furthest_node_path[-2]
+        furthest_node = furthest_node_path[-1]
+        closest_node = furthest_node_path[1]
+        root = furthest_node_path[0]
+        self.root = root
 
+        grey_to_arch_map = {}
+        grey_to_arch_map[self.num_controls] = root
+        grey_to_arch_map[self.num_controls-1] = closest_node
+        grey_to_arch_map[0] = furthest_node
+
+        optimal_neighborhood.pop(root)
+        optimal_neighborhood.pop(closest_node)
+
+        if optimal_neighborhood.get(furthest_node) != None:
             optimal_neighborhood.pop(furthest_node)
-            optimal_neighborhood.pop(second_furthest_node)
+            offset = 2
+        else: 
+            offset = 1
 
-            grey_to_arch_map = {}
-            grey_to_arch_map[0] = furthest_node
-            grey_to_arch_map[1] = second_furthest_node
-
-
-            for key, grey_key in zip(list(optimal_neighborhood.keys()), range(self.num_controls, 1, -1)):
-                grey_to_arch_map[grey_key] = key
-
-            
-            self.root = grey_to_arch_map[self.num_controls]
-            self.grey_to_arch_map = grey_to_arch_map
-            self.arch_qubits = list(grey_to_arch_map.values()).copy()
-            self.recompute_optimal_neighborhood()
-
-            self.arch_to_grey_map = {}
-            for key, value in self.grey_to_arch_map.items():
-                self.arch_to_grey_map[value] = key
-        else:
-            furthest_node = furthest_node_path[-1]
-            closest_node = furthest_node_path[1]
-            root = furthest_node_path[0]
-            self.root = root
-
-            grey_to_arch_map = {}
-            grey_to_arch_map[self.num_controls] = root
-            grey_to_arch_map[self.num_controls-1] = closest_node
-            grey_to_arch_map[0] = furthest_node
-
-            optimal_neighborhood.pop(root)
-            optimal_neighborhood.pop(closest_node)
-
-            if optimal_neighborhood.get(furthest_node) != None:
-                optimal_neighborhood.pop(furthest_node)
-                offset = 2
-            else: 
-                offset = 1
-
-            for key, grey_key in zip(list(optimal_neighborhood.keys()), range(self.num_controls - offset, 0, -1)):
-                grey_to_arch_map[grey_key] = key
-        
-            self.grey_to_arch_map = grey_to_arch_map
-            self.arch_qubits = list(grey_to_arch_map.values()).copy()
+        for key, grey_key in zip(list(optimal_neighborhood.keys()), range(self.num_controls - offset, 0, -1)):
+            grey_to_arch_map[grey_key] = key
+    
+        self.grey_to_arch_map = grey_to_arch_map
+        self.arch_qubits = list(grey_to_arch_map.values()).copy()
 
         self.furthest_node = furthest_node
         self.arch_to_grey_map = {}
@@ -182,7 +234,8 @@ class RoutedMultiplexer(object):
             self.gate_queue.append(cnot)
         
         if cnot[1] == self.num_controls:
-            if self.state[self.num_controls] not in self.discovered_pp_terms and self.state[self.num_controls] in self.pp_terms:
+            if self.state[self.num_controls] not in self.discovered_pp_terms:
+            # if self.state[self.num_controls] not in self.discovered_pp_terms and self.state[self.num_controls] in self.pp_terms:
                 self.discovered_pp_terms.add(self.state[self.num_controls])
                 self.gate_queue.append(("RZ", self.state_to_angle_dict[self.state[self.num_controls]], self.num_controls))
             elif ignore and self.state[self.num_controls] in self.discovered_pp_terms:
@@ -254,7 +307,7 @@ class RoutedMultiplexer(object):
 
         self.pp_terms = set([x for x in range(2 ** self.num_controls, 2 ** self.num_qubits)])
         self.discovered_pp_terms = set([2 ** self.num_controls])
-        self.state = {q: 1 << q for q in range(self._num_qubits)}
+        self.state = {q: 1 << q for q in range(self.num_qubits)}
         self.state_to_angle_dict = dict(zip(grey_state_queue, self.multiplexer_angles))
         init_state = self.state.copy()
 
@@ -337,7 +390,6 @@ class RoutedMultiplexer(object):
     def copy(self):
         cp = RoutedMultiplexer(list(self.multiplexer_angles.copy()), self.coupling_map.copy(), self.num_qubits, self.reverse)
         cp.num_qubits = self.num_qubits
-        cp._num_qubits = self._num_qubits
         cp.num_controls = self.num_controls
         cp.neighbors = self.neighbors.copy()
         cp.vertices = self.vertices.copy()
@@ -452,14 +504,16 @@ if __name__ == "__main__":
 
     angles = random_angles(2 ** (num_qubits - 1))
 
-    transformed_angles = list(möttönen_transformation(angles))
+    # transformed_angles = list(möttönen_transformation(angles))
 
 
-    routed_multiplexer = RoutedMultiplexer(multiplexer_angles= transformed_angles, coupling_map= fake_cairo.coupling_map)
-    cx_count = routed_multiplexer.map_grey_qubits_to_arch(set_last_two_adjacent = True)
+    routed_multiplexer = RoutedMultiplexer(multiplexer_angles= angles, coupling_map= fake_garnet)
+    routed_multiplexer.map_grey_qubits_to_arch_unitary_synth()
+    # routed_multiplexer.find_optimal_neighborhood()
+    # cx_count = routed_multiplexer.map_grey_qubits_to_arch(set_last_two_adjacent = True)
     exit()
-    qc = routed_multiplexer.get_circuit()
+    # qc = routed_multiplexer.get_circuit()
     # print(routed_multiplexer.grey_to_arch_map)
-    routed_multiplexer.draw_circuit(qc, "figure_1.png")
+    # routed_multiplexer.draw_circuit(qc, "figure_1.png")
     # routed_multiplexer.print_circ_unitary(qc)
     print(f"Number of cx: {cx_count}")
