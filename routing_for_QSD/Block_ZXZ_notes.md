@@ -13,4 +13,6 @@ Additionally, look into the Qiskit circ to unitary method. I might want to redo 
 The whole SWAP search can probably be deleted also. I can calculate the cost of the multiplexes plus SWAPS vs not SWAPPing and subtracting the outer most CNOTs absorbed by the
 unitary and determine whether to SWAP or not, similarly to the optimal neighborhood algorithm.
         -When calculating the SWAP cost, we should SWAP towards qubit 0 and also SWAP with it. It doeesn't make sense to SWAP any further since everything is as close as possible to qubit 0.
+
+Change SWAP sequence so that it doesnt go the shortest route but from n -> n-1 -> n-2 ... -> 0
     

@@ -26,7 +26,7 @@ class BlockZXZ(object):
     def print_circ_unitary(self, qc):
         qc = qc.copy()
         # print(qc.count_ops())
-        qc = transpile(qc, optimization_level=0, basis_gates=['cx', 'h', 'x', 'rz', 'rx', 'ry'])
+        # qc = transpile(qc, optimization_level=0, basis_gates=['cx', 'h', 'x', 'rz', 'rx', 'ry'])
         qc.save_unitary()
         simulator = Aer.get_backend('aer_simulator')
         qc = transpile(qc, simulator)
@@ -131,6 +131,9 @@ class BlockZXZ(object):
                     best_cost = current_cost
                     best_arch_to_grey = arch_to_grey_copy.copy()
                     best_swap_count = swap_count
+
+
+
             
             current_level_multiplexer = multiplexer.copy()
             current_level_multiplexer.arch_to_grey_map = best_arch_to_grey
@@ -145,6 +148,8 @@ class BlockZXZ(object):
             else: 
                 self.swaps_per_level[recursion_level] = path_to_root[len(path_to_root) - 1 - best_swap_count:]
                 self.swap_maps[recursion_level] = {x: current_level_multiplexer.arch_to_grey_map[multiplexer.grey_to_arch_map[x]] for x in range(i)}
+
+
             self.routed_multiplexers[recursion_level] = current_level_multiplexer
 
             multiplexer.num_qubits = multiplexer.num_qubits - 1
@@ -155,6 +160,7 @@ class BlockZXZ(object):
             multiplexer.optimal_neighborhood.pop(value)
 
             recursion_level += 1
+        # exit()
 
     def compute_decomposition(self, u, init = False, rightmost_unitary = False, leftmost_unitary = False, recursion_level = 0):
         num_qubits = int(math.log2(len(u)))
@@ -223,20 +229,20 @@ class BlockZXZ(object):
         # print(gates_C)
         # print(gates_A)
         
-        # cx_gates_merged = 0
-        # while True:
-        #     popped_gate = gates_C.pop()
-        #     if popped_gate[0] == "RZ" or popped_gate[0] >= target_qubit + 1 or popped_gate[1] >= target_qubit + 1: #These CNOTs (or RZ) cannot be merged into the neighboring unitaries
-        #         gates_C.append(popped_gate)
-        #         break
+        cx_gates_merged = 0
+        while True:
+            popped_gate = gates_C.pop()
+            if popped_gate[0] == "RZ" or popped_gate[0] >= target_qubit + 1 or popped_gate[1] >= target_qubit + 1 or popped_gate[1] == 1 or popped_gate[0] == 1: #These CNOTs (or RZ) cannot be merged into the neighboring unitaries
+                gates_C.append(popped_gate)
+                break
 
-        #     gates_A.popleft()
-        #     unitary = self.get_cnot_unitary(num_qubits, popped_gate)
+            gates_A.popleft()
+            unitary = self.get_cnot_unitary(num_qubits, popped_gate)
 
-        #     if popped_gate[1] == target_qubit: unitary = np.kron(H, I) @ unitary @ np.kron(H, I) #Position of H might vary
+            if popped_gate[1] == target_qubit: unitary = np.kron(H, I) @ unitary @ np.kron(H, I) #Position of H might vary
 
-        #     B_tilde = unitary @ B_tilde @ unitary
-        #     cx_gates_merged += 1
+            B_tilde = unitary @ B_tilde @ unitary
+            cx_gates_merged += 1
 
         B_11 = B_tilde[:block_len, :block_len]
         B_22 = B_tilde[block_len:, block_len:]
@@ -262,7 +268,7 @@ class BlockZXZ(object):
                 if gate[0] != "RZ":
                     new_gates_B.append((swap_map[gate[0]], swap_map[gate[1]]))
                 else: new_gates_B.append((gate[0], gate[1], swap_map[gate[2]]))
-            for gate in gates_B:
+            for gate in gates_C:
                 if gate[0] != "RZ":
                     new_gates_C.append((swap_map[gate[0]], swap_map[gate[1]]))
                 else: new_gates_C.append((gate[0], gate[1], swap_map[gate[2]]))
@@ -276,7 +282,8 @@ class BlockZXZ(object):
         self.compute_decomposition(V_A, rightmost_unitary = rightmost_unitary, leftmost_unitary=False, recursion_level = recursion_level + 1)
 
         if self.swaps_per_level[recursion_level] != None: self.swap_to(routed_multiplexer, self.swaps_per_level[recursion_level], reverse = True)
-        self.gate_queue.append(gates_A)
+        if recursion_level == 0: self.gate_queue.append((block_diag_A, "A"))
+        else: self.gate_queue.append(gates_A)
         if self.swaps_per_level[recursion_level] != None: self.swap_to(routed_multiplexer, self.swaps_per_level[recursion_level], reverse = False)
 
         self.compute_decomposition(V_B, rightmost_unitary = False, leftmost_unitary=False, recursion_level = recursion_level + 1)
@@ -284,14 +291,17 @@ class BlockZXZ(object):
 
         self.gate_queue.append(("H", target_qubit))
         if self.swaps_per_level[recursion_level] != None: self.swap_to(routed_multiplexer, self.swaps_per_level[recursion_level], reverse = True)
-        self.gate_queue.append(gates_B)
+        
+        if recursion_level == 0: self.gate_queue.append((block_diag_B, "B"))
+        else: self.gate_queue.append(gates_B)
         if self.swaps_per_level[recursion_level] != None: self.swap_to(routed_multiplexer, self.swaps_per_level[recursion_level], reverse = False)
         self.gate_queue.append(("H", target_qubit))
 
         self.compute_decomposition(W_B, rightmost_unitary = False, leftmost_unitary=False,  recursion_level = recursion_level + 1)
         
         if self.swaps_per_level[recursion_level] != None: self.swap_to(routed_multiplexer, self.swaps_per_level[recursion_level], reverse = True)
-        self.gate_queue.append(gates_C)
+        if recursion_level == 0: self.gate_queue.append((block_diag_C, "C"))
+        else: self.gate_queue.append(gates_C)
         if self.swaps_per_level[recursion_level] != None: self.swap_to(routed_multiplexer, self.swaps_per_level[recursion_level], reverse = False)
 
         self.compute_decomposition(W_C, rightmost_unitary = False, leftmost_unitary = leftmost_unitary, recursion_level = recursion_level + 1)
@@ -301,7 +311,7 @@ if __name__ == "__main__":
     with open(f"coupling_maps/fake_garnet.json") as f:
         fake_garnet = json.load(f)
 
-    num_qubits = 5
+    num_qubits = 6
     U = generate_U(num_qubits)
 
     
@@ -326,7 +336,8 @@ if __name__ == "__main__":
                             qc.cx(gate[0], gate[1])
                 case 'tuple':
                     if type(gates[0]).__name__ == "ndarray":
-                        qc.append(UnitaryGate(gates[0], gates[1]), [0, 1])
+                        # qc.append(UnitaryGate(gates[0], gates[1]), [0, 1])
+                        qc.append(UnitaryGate(gates[0], gates[1]), reversed(range(num_qubits)))
                     elif gates[0] == 'H': qc.h(gates[1])
                     elif gates[0] == "CX": qc.cx(gates[1][0], gates[1][1])
                     else:
@@ -338,7 +349,7 @@ if __name__ == "__main__":
             break
 
     print(f"CX count: {cx_count}")
-    # zxz.draw_circuit(qc, "fig5.png")
+    zxz.draw_circuit(qc, "fig6.png")
     print(zxz.routed_multiplexers.get(0))
     print(zxz.routed_multiplexers.get(1))
     print(zxz.routed_multiplexers.get(2))
