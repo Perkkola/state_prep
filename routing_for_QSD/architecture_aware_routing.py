@@ -184,10 +184,10 @@ class RoutedMultiplexer(object):
         self.grey_to_arch_map = {}
         for key, value in self.arch_to_grey_map.items():
             self.grey_to_arch_map[value] = key
-
-        print(self.grey_to_arch_map)
-        print(self.arch_to_grey_map)
-        print(self.optimal_neighborhood)
+        
+        self.arch_qubits = list(self.grey_to_arch_map.copy().values())
+        self.root = self.grey_to_arch_map[self.num_controls]
+        self.furthest_node = self.grey_to_arch_map[0]
 
     def map_grey_qubits_to_arch(self):
         optimal_neighborhood = self.find_optimal_neighborhood()[0]
@@ -234,8 +234,8 @@ class RoutedMultiplexer(object):
             self.gate_queue.append(cnot)
         
         if cnot[1] == self.num_controls:
-            if self.state[self.num_controls] not in self.discovered_pp_terms:
-            # if self.state[self.num_controls] not in self.discovered_pp_terms and self.state[self.num_controls] in self.pp_terms:
+            # if self.state[self.num_controls] not in self.discovered_pp_terms:
+            if self.state[self.num_controls] not in self.discovered_pp_terms and self.state[self.num_controls] in self.pp_terms:
                 self.discovered_pp_terms.add(self.state[self.num_controls])
                 self.gate_queue.append(("RZ", self.state_to_angle_dict[self.state[self.num_controls]], self.num_controls))
             elif ignore and self.state[self.num_controls] in self.discovered_pp_terms:
@@ -300,12 +300,13 @@ class RoutedMultiplexer(object):
             ignore = False if dist > 1 else True
             self.long_range_cnot(arch_path, False)
 
-    def execute_gates(self, set_last_two_adjacent, execute_only):
-        if not execute_only: self.map_grey_qubits_to_arch(set_last_two_adjacent)
+    def execute_gates(self, execute_only = False):
+        if not execute_only: self.map_grey_qubits_to_arch()
 
         grey_gates, grey_state_queue = get_grey_gates(self.num_controls, False, True, True)
 
         self.pp_terms = set([x for x in range(2 ** self.num_controls, 2 ** self.num_qubits)])
+        
         self.discovered_pp_terms = set([2 ** self.num_controls])
         self.state = {q: 1 << q for q in range(self.num_qubits)}
         self.state_to_angle_dict = dict(zip(grey_state_queue, self.multiplexer_angles))
@@ -315,17 +316,17 @@ class RoutedMultiplexer(object):
         self.gate_queue.append(("RZ", self.multiplexer_angles[0], self.num_controls))
 
         for gate in grey_gates:
+            if self.discovered_pp_terms == self.pp_terms: break
             ctrl_qubit = gate[0]
             arch_qubit = self.grey_to_arch_map[ctrl_qubit]
             arch_path = self.optimal_neighborhood[arch_qubit]
             dist = len(arch_path) - 1
-
             ignore = False if dist > 1 else True
             self.long_range_cnot(arch_path, ignore)
-        
+
+
         if init_state != self.state:
             self.reset_state()
-
         unfound_terms = self.pp_terms - self.discovered_pp_terms
 
         if len(unfound_terms) > 0:
@@ -340,10 +341,10 @@ class RoutedMultiplexer(object):
             print("State was not reset correctly!")
 
         self.cx_count = circuit_length
-        return circuit_length
+        return circuit_length, self.gate_queue.copy()
 
-    def map_grey_gates_to_arch(self, set_last_two_adjacent = True, execute_only = False):
-        self.execute_gates(set_last_two_adjacent, execute_only)
+    def map_grey_gates_to_arch(self):
+        self.execute_gates()
         grey_gates = self.gate_queue.copy()
         arch_gates = deque()
 
@@ -397,7 +398,7 @@ class RoutedMultiplexer(object):
         cp.furthest_node = self.furthest_node
         cp.arch_to_grey_map = self.arch_to_grey_map.copy()
         cp.grey_to_arch_map = self.grey_to_arch_map.copy()
-        cp.arch_gates = self.arch_gates.copy()
+        # cp.arch_gates = self.arch_gates.copy()
         cp.arch_qubits = self.arch_qubits.copy()
         cp.optimal_neighborhood = self.optimal_neighborhood.copy()
         return cp

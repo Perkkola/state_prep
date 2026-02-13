@@ -19,6 +19,7 @@ class BlockZXZ(object):
         self.diag = None
         self.routed_multiplexers = {}
         self.swaps_per_level = {}
+        self.swap_maps = {}
 
         #Figure out swap sequences here and store them in memory. Also store correct multiplexers for each recursion level.
 
@@ -44,14 +45,6 @@ class BlockZXZ(object):
             fig = qc.draw(output="mpl", interactive=True)
         # plt.show()
 
-    def get_closest_unitary(self, matrix):
-        """
-        Computes the closest unitary matrix to the input using SVD.
-        This fixes the precision loss from copy-pasting.
-        """
-        V, _, Wh = np.linalg.svd(matrix)
-        return V @ Wh
-
     def get_cnot_unitary(self, num_qubits, cnot):
         cnot = (cnot[0], cnot[1])
         cnot_base = np.eye(2 ** num_qubits)
@@ -63,40 +56,26 @@ class BlockZXZ(object):
 
         return cnot_base
     
-    def swap_to_adjacent(self, path, reverse = False):
-        new_source = 0 
+    def swap_to(self, multiplexer, path, reverse = False):
         if reverse:
-            indices = reversed(range(len(path) - 2))
+            indices = reversed(range(len(path) - 1))
         else: 
-            indices = range(len(path) - 2)
+            indices = range(len(path) - 1)
         for i in indices:
-            q_1 = self.original_multiplexers[0].arch_to_grey_map[path[i]]
-            q_2 = self.original_multiplexers[0].arch_to_grey_map[path[i + 1]]
-            new_source = q_2 
+            q_1 = multiplexer.arch_to_grey_map[path[i]]
+            q_2 = multiplexer.arch_to_grey_map[path[i + 1]]
             self.gate_queue.append(("SWAP", (q_1, q_2)))
 
-        return new_source
-
-
     def decompose_two_qubit_unitary(self, u, rightmost_unitary, leftmost_unitary):
-        source = self.original_multiplexers[0].grey_to_arch_map[0]
-        target = self.original_multiplexers[0].grey_to_arch_map[1]
-
-        if self.two_qubit_unitary_path == None : self.two_qubit_unitary_path = list(get_path(self.original_multiplexers[0].neighbors, set(self.original_multiplexers[0].arch_qubits), source, target))
-
-        new_source = self.swap_to_adjacent(self.two_qubit_unitary_path, reverse = True)
-
         if rightmost_unitary == False: u = self.diag @ u
         if not leftmost_unitary: 
-            diag_u, gates = extract_diagonal(u, new_source)
+            diag_u, gates = extract_diagonal(u, 0)
             self.diag = diag_u
         else:
-            gates = three_cnot_decomposition(u, new_source)
-        # gates = three_cnot_decomposition(u, new_source)
+            gates = three_cnot_decomposition(u, 0)
+        # gates = three_cnot_decomposition(u, 0)
         self.gate_queue.append(gates)
 
-        _ = self.swap_to_adjacent(self.two_qubit_unitary_path)
-    
     def demultiplex(self, u_1, u_2):
         """
         Demultiplexing procedure from the Block-ZXZ paper.
@@ -118,10 +97,70 @@ class BlockZXZ(object):
                                 [zeros, np.conj(diag.T)]])
 
         return V, block_diag, W
+    
+    def initialize_multiplexers(self, num_qubits):
+        multiplexer = RoutedMultiplexer(coupling_map=self.coupling_map, num_qubits=num_qubits)
+        multiplexer.map_grey_qubits_to_arch_unitary_synth()
+        self.original_multiplexer = multiplexer.copy()
+        recursion_level = 0
+        for i in range(num_qubits, 2, - 1):
+            target = multiplexer.grey_to_arch_map[i - 1]
+            path_to_root = multiplexer.optimal_neighborhood[target]
+
+            best_cost = multiplexer.get_multiplexer_cost(i, multiplexer.arch_qubits, multiplexer.arch_to_grey_map, target)
+            best_arch_to_grey = multiplexer.arch_to_grey_map.copy()
+            best_swap_count = 0
+            furthest = multiplexer.grey_to_arch_map[0]
+            last_cnot_dist = len(list(get_path(multiplexer.neighbors, multiplexer.arch_qubits, target, furthest))) - 1
+            best_cost -= ((4 * last_cnot_dist - 4) - 1) if last_cnot_dist > 1 else 1 #Last CNOT can be absorbed into the next unitary.
+
+
+            arch_to_grey_copy = multiplexer.arch_to_grey_map.copy()
+            swap_count = 0
+            for j in range(len(path_to_root) - 1, 0, -1):
+                temp = arch_to_grey_copy[path_to_root[j]]
+                arch_to_grey_copy[path_to_root[j]] = arch_to_grey_copy[path_to_root[j - 1]]
+                arch_to_grey_copy[path_to_root[j - 1]] = temp
+                swap_count += 1
+                current_cost = multiplexer.get_multiplexer_cost(i, multiplexer.arch_qubits, arch_to_grey_copy, path_to_root[j - 1])
+                last_cnot_dist = len(list(get_path(multiplexer.neighbors, multiplexer.arch_qubits, path_to_root[j - 1], furthest))) - 1
+                current_cost -= ((4 * last_cnot_dist - 4) - 1) if last_cnot_dist > 1 else 1 
+                current_cost += swap_count * 3 * 2
+
+                if current_cost < best_cost:
+                    best_cost = current_cost
+                    best_arch_to_grey = arch_to_grey_copy.copy()
+                    best_swap_count = swap_count
+            
+            current_level_multiplexer = multiplexer.copy()
+            current_level_multiplexer.arch_to_grey_map = best_arch_to_grey
+            current_level_multiplexer.grey_to_arch_map = {item: key for key, item in best_arch_to_grey.items()}
+            current_level_multiplexer.root = current_level_multiplexer.grey_to_arch_map[i - 1]
+            current_level_multiplexer.furthest_node = current_level_multiplexer.grey_to_arch_map[0]
+            current_level_multiplexer.recompute_optimal_neighborhood()
+
+            if best_swap_count == 0: 
+                self.swaps_per_level[recursion_level] = None
+                self.swap_maps[recursion_level] = None
+            else: 
+                self.swaps_per_level[recursion_level] = path_to_root[len(path_to_root) - 1 - best_swap_count:]
+                self.swap_maps[recursion_level] = {x: current_level_multiplexer.arch_to_grey_map[multiplexer.grey_to_arch_map[x]] for x in range(i)}
+            self.routed_multiplexers[recursion_level] = current_level_multiplexer
+
+            multiplexer.num_qubits = multiplexer.num_qubits - 1
+            multiplexer.num_controls = multiplexer.num_controls - 1
+            value = multiplexer.grey_to_arch_map.pop(i - 1)
+            multiplexer.arch_to_grey_map.pop(value)
+            multiplexer.root = multiplexer.grey_to_arch_map[i - 2]
+            multiplexer.optimal_neighborhood.pop(value)
+
+            recursion_level += 1
 
     def compute_decomposition(self, u, init = False, rightmost_unitary = False, leftmost_unitary = False, recursion_level = 0):
         num_qubits = int(math.log2(len(u)))
         target_qubit = num_qubits - 1
+
+        if init: self.initialize_multiplexers(num_qubits)
 
         if num_qubits == 2:
             self.decompose_two_qubit_unitary(u, rightmost_unitary, leftmost_unitary)
@@ -176,28 +215,28 @@ class BlockZXZ(object):
         transformed_angles_A = möttönen_transformation(angles_A)
 
       
-        routed_multiplexer = RoutedMultiplexer(multiplexer_angles=transformed_angles_C, coupling_map=self.coupling_map) 
-        ###### Get multiplexer from class memory.
-        ###### Get correct SWAP sequence also
+        routed_multiplexer = self.routed_multiplexers[recursion_level].copy()
+        routed_multiplexer.multiplexer_angles = transformed_angles_C
 
-        _, gates_C = self.routed_multiplexers[recursion_level].map_grey_gates_to_arch(set_last_two_adjacent = True, execute_only=True)
-        gates_A = self.routed_multiplexers[recursion_level].replace_mapped_angles(transformed_angles_A, True)
+        _, gates_C = routed_multiplexer.execute_gates(execute_only=True)
+        gates_A = routed_multiplexer.replace_mapped_angles(transformed_angles_A, True)
+        # print(gates_C)
+        # print(gates_A)
         
+        # cx_gates_merged = 0
+        # while True:
+        #     popped_gate = gates_C.pop()
+        #     if popped_gate[0] == "RZ" or popped_gate[0] >= target_qubit + 1 or popped_gate[1] >= target_qubit + 1: #These CNOTs (or RZ) cannot be merged into the neighboring unitaries
+        #         gates_C.append(popped_gate)
+        #         break
 
-        cx_gates_merged = 0
-        while True:
-            popped_gate = gates_C.pop()
-            if popped_gate[0] == "RZ" or popped_gate[0] >= target_qubit + 1 or popped_gate[1] >= target_qubit + 1: #These CNOTs (or RZ) cannot be merged into the neighboring unitaries
-                gates_C.append(popped_gate)
-                break
+        #     gates_A.popleft()
+        #     unitary = self.get_cnot_unitary(num_qubits, popped_gate)
 
-            gates_A.popleft()
-            unitary = self.get_cnot_unitary(num_qubits, popped_gate)
+        #     if popped_gate[1] == target_qubit: unitary = np.kron(H, I) @ unitary @ np.kron(H, I) #Position of H might vary
 
-            if popped_gate[1] == target_qubit: unitary = np.kron(H, I) @ unitary @ np.kron(H, I) #Position of H might vary
-
-            B_tilde = unitary @ B_tilde @ unitary
-            cx_gates_merged += 1
+        #     B_tilde = unitary @ B_tilde @ unitary
+        #     cx_gates_merged += 1
 
         B_11 = B_tilde[:block_len, :block_len]
         B_22 = B_tilde[block_len:, block_len:]
@@ -208,31 +247,52 @@ class BlockZXZ(object):
         angles_B = list(extract_angles(single_qubit_unitaries_B))
         transformed_angles_B = möttönen_transformation(angles_B)
 
-        gates_B = self.routed_multiplexers[recursion_level].replace_mapped_angles(transformed_angles_B, False)
+        gates_B = routed_multiplexer.replace_mapped_angles(transformed_angles_B, False)
 
+        if self.swap_maps[recursion_level] != None:
+            new_gates_A = deque()
+            new_gates_B = deque()
+            new_gates_C = deque()
+            swap_map = self.swap_maps[recursion_level]
+            for gate in gates_A:
+                if gate[0] != "RZ":
+                    new_gates_A.append((swap_map[gate[0]], swap_map[gate[1]]))
+                else: new_gates_A.append((gate[0], gate[1], swap_map[gate[2]]))
+            for gate in gates_B:
+                if gate[0] != "RZ":
+                    new_gates_B.append((swap_map[gate[0]], swap_map[gate[1]]))
+                else: new_gates_B.append((gate[0], gate[1], swap_map[gate[2]]))
+            for gate in gates_B:
+                if gate[0] != "RZ":
+                    new_gates_C.append((swap_map[gate[0]], swap_map[gate[1]]))
+                else: new_gates_C.append((gate[0], gate[1], swap_map[gate[2]]))
+
+            gates_A = new_gates_A
+            gates_B = new_gates_B
+            gates_C = new_gates_C
 
         #THIS IS REVERSED FOR A REASON
         #Reason being: we need to decompose the last two qubit unitary first and only then migrate the diagonals through the circuit
         self.compute_decomposition(V_A, rightmost_unitary = rightmost_unitary, leftmost_unitary=False, recursion_level = recursion_level + 1)
 
-        if self.swaps_per_level.get(recursion_level) != None: self.swap_to_adjacent(self.swaps_per_level[recursion_level], reverse = True)
+        if self.swaps_per_level[recursion_level] != None: self.swap_to(routed_multiplexer, self.swaps_per_level[recursion_level], reverse = True)
         self.gate_queue.append(gates_A)
-        if self.swaps_per_level.get(recursion_level) != None: self.swap_to_adjacent(self.swaps_per_level[recursion_level], reverse = False)
+        if self.swaps_per_level[recursion_level] != None: self.swap_to(routed_multiplexer, self.swaps_per_level[recursion_level], reverse = False)
 
         self.compute_decomposition(V_B, rightmost_unitary = False, leftmost_unitary=False, recursion_level = recursion_level + 1)
 
 
         self.gate_queue.append(("H", target_qubit))
-        if self.swaps_per_level.get(recursion_level) != None: self.swap_to_adjacent(self.swaps_per_level[recursion_level], reverse = True)
+        if self.swaps_per_level[recursion_level] != None: self.swap_to(routed_multiplexer, self.swaps_per_level[recursion_level], reverse = True)
         self.gate_queue.append(gates_B)
-        if self.swaps_per_level.get(recursion_level) != None: self.swap_to_adjacent(self.swaps_per_level[recursion_level], reverse = False)
+        if self.swaps_per_level[recursion_level] != None: self.swap_to(routed_multiplexer, self.swaps_per_level[recursion_level], reverse = False)
         self.gate_queue.append(("H", target_qubit))
 
         self.compute_decomposition(W_B, rightmost_unitary = False, leftmost_unitary=False,  recursion_level = recursion_level + 1)
         
-        if self.swaps_per_level.get(recursion_level) != None: self.swap_to_adjacent(self.swaps_per_level[recursion_level], reverse = True)
+        if self.swaps_per_level[recursion_level] != None: self.swap_to(routed_multiplexer, self.swaps_per_level[recursion_level], reverse = True)
         self.gate_queue.append(gates_C)
-        if self.swaps_per_level.get(recursion_level) != None: self.swap_to_adjacent(self.swaps_per_level[recursion_level], reverse = False)
+        if self.swaps_per_level[recursion_level] != None: self.swap_to(routed_multiplexer, self.swaps_per_level[recursion_level], reverse = False)
 
         self.compute_decomposition(W_C, rightmost_unitary = False, leftmost_unitary = leftmost_unitary, recursion_level = recursion_level + 1)
         
@@ -241,13 +301,13 @@ if __name__ == "__main__":
     with open(f"coupling_maps/fake_garnet.json") as f:
         fake_garnet = json.load(f)
 
-    num_qubits = 14
+    num_qubits = 5
     U = generate_U(num_qubits)
-    exit()
+
     
     zxz = BlockZXZ(coupling_map=fake_garnet)
     zxz.compute_decomposition(U, init = True, rightmost_unitary = True, leftmost_unitary = True)
-    qubits = [QuantumRegister(1, name=f'{zxz.routed_multiplexers[0].grey_to_arch_map[i]}') for i in range(num_qubits)]
+    qubits = [QuantumRegister(1, name=f'{zxz.original_multiplexer.grey_to_arch_map[i]}') for i in range(num_qubits)]
     qc = QuantumCircuit(*qubits)
 
     cx_count = 0
@@ -278,16 +338,11 @@ if __name__ == "__main__":
             break
 
     print(f"CX count: {cx_count}")
-    # zxz.draw_circuit(qc, "fig4.png")
+    # zxz.draw_circuit(qc, "fig5.png")
     print(zxz.routed_multiplexers.get(0))
     print(zxz.routed_multiplexers.get(1))
     print(zxz.routed_multiplexers.get(2))
     print(zxz.routed_multiplexers.get(3))
-
-    print(zxz.optimal_multiplexers.get(0))
-    print(zxz.optimal_multiplexers.get(1))
-    print(zxz.optimal_multiplexers.get(2))
-    print(zxz.optimal_multiplexers.get(3))
     # print(zxz.swap_maps[0])
     # print(zxz.swap_maps[1])
     # print(zxz.swap_maps[2])
