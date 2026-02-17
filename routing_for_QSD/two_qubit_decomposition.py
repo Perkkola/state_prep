@@ -1,5 +1,5 @@
 import numpy as np
-from utils import orthogonal_congruence_diagonalize, get_zyz_angles
+from utils import orthogonal_congruence_diagonalize, get_zyz_angles, ry, rz, rx
 from pennylane.math import partial_trace
 from collections import deque
 from qiskit import QuantumCircuit
@@ -65,20 +65,6 @@ def gamma_map(u):
     assert len(u) == 4
     return u @ sigma_y_kron_2 @ u.T @ sigma_y_kron_2
 
-def rz(angle):
-    return np.diag([np.exp(-1j * angle / 2), np.exp(1j * angle / 2)])
-
-def rx(angle):
-    return np.array([
-        [np.cos(angle / 2), -1j * np.sin(angle / 2)],
-        [-1j * np.sin(angle / 2), np.cos(angle / 2)]
-    ])
-
-def ry(angle):
-    return np.array([
-        [np.cos(angle / 2), -np.sin(angle / 2)],
-        [np.sin(angle / 2), np.cos(angle / 2)]
-    ])
 
 def get_single_qubit_unitaries(U_E, k_E):
     S_U = U_E @ (U_E.T)
@@ -103,8 +89,8 @@ def get_single_qubit_unitaries(U_E, k_E):
     c = project_to_SU2(c)
     d = project_to_SU2(d)
 
-    a = -a if np.round(np.kron(a, b)[0][0], 12) == -np.round(A_tilde[0][0], 12) else a
-    c = -c if np.round(np.kron(c, d)[0][0], 12) == -np.round(C_tilde[0][0], 12) else c
+    a = -a if np.round(np.kron(a, b)[0][0], 32) == -np.round(A_tilde[0][0], 32) else a
+    c = -c if np.round(np.kron(c, d)[0][0], 32) == -np.round(C_tilde[0][0], 32) else c
 
     return a, b, c, d
 

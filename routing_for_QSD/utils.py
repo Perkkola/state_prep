@@ -265,8 +265,16 @@ def extract_angles(unitaries):
 
         ang = math.acos(np.real(value))
 
-        if np.round(math.sin(ang), 10) == np.round(np.imag(value), 10): ang = -ang
+        if np.round(math.sin(ang), 32) == np.round(np.imag(value), 32): ang = -ang
         yield ang
+
+def angles_from_diag(diag):
+    angles = []
+    half = len(diag) // 2
+    for i in range(half):
+        j = int((f"{{:0>{int(math.log2(half))}b}}".format(i))[::-1], 2) 
+        angles.append(np.angle(diag[half + j][half + j]))
+    return angles
 
 def extract_angles_from_eigvals(eigvals):
     for value in eigvals:
@@ -358,7 +366,7 @@ def get_zyz_angles(U):
     theta = 2 * np.arctan2(np.abs(u10), np.abs(u00))
     
     # Define a small tolerance for float comparison
-    TOL = 1e-12
+    TOL = 1e-32
 
     # 2. Calculate Phi and Lambda (Handling singularities)
     if np.abs(u10) < TOL: # Theta is approx 0
@@ -392,6 +400,9 @@ def check_equivalence_up_to_phase(u_orig, u_recon):
 
     # 2. The magnitude of the overlap should be equal to the dimension (4)
     dim = u_orig.shape[0]
+    print(dim)
+    print(overlap)
+    print(np.abs(overlap))
     if not np.isclose(np.abs(overlap), dim, atol=1e-5):
         print(f"FAILED: Matrices are not equivalent. Overlap magnitude: {np.abs(overlap)}")
         return False, None
@@ -416,3 +427,24 @@ def get_path(neighbors, subset_nodes, source, target):
     new_neighbors = get_subset_of_neighbors(neighbors, subset_nodes)
     AStar = BasicAStar(new_neighbors)
     return AStar.astar(source, target)
+
+def project_to_SU(U, n): 
+    detU = np.linalg.det(U)
+    assert detU != 0, "Matrix is not unitary!"
+    phase = detU ** (1 / n)
+    return U / phase, phase
+
+def rz(angle):
+    return np.diag([np.exp(-1j * angle / 2), np.exp(1j * angle / 2)])
+
+def rx(angle):
+    return np.array([
+        [np.cos(angle / 2), -1j * np.sin(angle / 2)],
+        [-1j * np.sin(angle / 2), np.cos(angle / 2)]
+    ])
+
+def ry(angle):
+    return np.array([
+        [np.cos(angle / 2), -np.sin(angle / 2)],
+        [np.sin(angle / 2), np.cos(angle / 2)]
+    ])

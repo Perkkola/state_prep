@@ -4,11 +4,11 @@ from qiskit.compiler import transpile
 from qiskit_aer import Aer, AerSimulator
 from qiskit_ibm_runtime.fake_provider import FakeFez, FakeMarrakesh, FakeCairoV2
 from qiskit_ibm_runtime import QiskitRuntimeService
-from pytket.extensions.qiskit import IBMQBackend
-from pytket.extensions.iqm import IQMBackend
-from pytket import Circuit, OpType
-from pytket.circuit import MultiplexedRotationBox
-from pytket.passes import DecomposeBoxes
+# from pytket.extensions.qiskit import IBMQBackend
+# from pytket.extensions.iqm import IQMBackend
+# from pytket import Circuit, OpType
+# from pytket.circuit import MultiplexedRotationBox
+# from pytket.passes import DecomposeBoxes
 import numpy as np
 import math 
 import sys
@@ -57,7 +57,8 @@ class QiskitBase(object):
 
         result = simulator.run(qc).result()
         unitary = result.get_unitary(qc)
-        print("Circuit unitary:\n", np.asarray(unitary).round(5))
+        print(np.array([unitary[i][i] for i in range(len(unitary))]))
+        # print("Circuit unitary:\n", np.asarray(unitary).round(5))
 
     def draw_circuit(self, qc):
         fig = qc.draw(output="mpl", interactive=True)
@@ -108,7 +109,7 @@ class QiskitGray(QiskitBase):
 
         if self.multiplexer != None:
             im_lazy = RoutedMultiplexer(multiplexer_angles=self.multiplexer, coupling_map=None, reverse=self.reverse)
-            _, grey_gates = im_lazy.map_grey_gates_to_arch()
+            _, grey_gates = im_lazy.execute_gates()
             qc = QuantumCircuit(self.num_qubits)
             for gate in list(grey_gates):
                 if gate[0] == "RZ":
@@ -310,12 +311,11 @@ if __name__ == "__main__":
     # print(multiplexor_unitary)
 
     # single_qubit_unitaries = list(extract_single_qubit_unitaries(multiplexor_unitary))
-    single_qubit_unitaries = [np.array([[math.cos(phi) - 1j*math.sin(phi), 0],
-                        [0, math.cos(phi) + 1j*math.sin(phi)]]) for phi in range(2 ** (num_qubits - 1))]
+    # single_qubit_unitaries = [np.array([[math.cos(phi) - 1j*math.sin(phi), 0],
+    #                     [0, math.cos(phi) + 1j*math.sin(phi)]]) for phi in range(2 ** (num_qubits - 1))]
     # angles = list(extract_angles(single_qubit_unitaries))
-    angles = random_angles(num_qubits)
+    angles = random_angles(2 ** (num_qubits - 1))
     transformed_angles = list(möttönen_transformation(angles))
-
     # print("done")
 
     coupling_map = None
@@ -348,24 +348,25 @@ if __name__ == "__main__":
 
     # print(multiplexor_unitary)
     # print("///////////////////")
-    qn = QiskitNative(num_qubits, coupling_map=coupling_map, multiplexer=single_qubit_unitaries, print_unitary= False)
-    qc = qn.generate_circuit(mux_simp=False)
-    qn_cx_count = qn.count_cx(qc)
+    # qn = QiskitNative(num_qubits, coupling_map=coupling_map, multiplexer=single_qubit_unitaries, print_unitary= False)
+    # qc = qn.generate_circuit(mux_simp=False)
+    # qn_cx_count = qn.count_cx(qc)
 
-    qg = QiskitGray(num_qubits, coupling_map=coupling_map, multiplexer=transformed_angles, print_unitary=False, reverse=True)
+    qg = QiskitGray(num_qubits, coupling_map=coupling_map, multiplexer=transformed_angles, print_unitary=True, reverse=True)
     qc2 = qg.generate_circuit()
     qg_cx_count = qg.count_cx(qc2)
 
 
-    proposed = RoutedMultiplexer(multiplexer_angles=transformed_angles, coupling_map=coupling_map, num_qubits=num_qubits)
-    p_cx_count = proposed.execute_gates()
+    proposed = RoutedMultiplexer(multiplexer_angles=transformed_angles, coupling_map=coupling_map)
+    p_cx_count, _ = proposed.execute_gates()
     qc_p = proposed.get_circuit()
-    # proposed.print_circ_unitary(qc_p)
-    grey_to_arch_map = proposed.grey_to_arch_map
+    proposed.print_circ_unitary(qc_p)
+    proposed.draw_circuit(qc_p)
+    # grey_to_arch_map = proposed.grey_to_arch_map
 
-    sg = SteinerSynth(num_qubits, coupling_map, multiplexer= transformed_angles)
-    qc3 = sg.generate_circuit(grey_to_arch_map=grey_to_arch_map)
-    sg_cx_count = sg.count_cx(qc3)
+    # sg = SteinerSynth(num_qubits, coupling_map, multiplexer= transformed_angles)
+    # qc3 = sg.generate_circuit(grey_to_arch_map=grey_to_arch_map)
+    # sg_cx_count = sg.count_cx(qc3)
     
     # tg = TKetGray(num_qubits, backend=backend, multiplexer=transformed_angles, print_unitary=False)
     # qc4 = tg.generate_circuit()
@@ -377,9 +378,9 @@ if __name__ == "__main__":
 
 
     
-    print(f"Qiskit native UCGate CX count: {qn_cx_count}")
-    print(f"Qiskit with gray code multiplexor CX count: {qg_cx_count}")
-    print(f"Steiner-Gray CX count: {sg_cx_count}")
-    # print(f"Tket with gray code CX count: {tg_cx_count}")
-    # print(f"Tket native Multiplexor CX count: {tn_cx_count}")
-    print(f"Proposed method CX count: {p_cx_count}")
+    # print(f"Qiskit native UCGate CX count: {qn_cx_count}")
+    # print(f"Qiskit with gray code multiplexor CX count: {qg_cx_count}")
+    # print(f"Steiner-Gray CX count: {sg_cx_count}")
+    # # print(f"Tket with gray code CX count: {tg_cx_count}")
+    # # print(f"Tket native Multiplexor CX count: {tn_cx_count}")
+    # print(f"Proposed method CX count: {p_cx_count}")

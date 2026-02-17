@@ -32,6 +32,7 @@ class RoutedMultiplexer(object):
 
         self.neighbors = self.get_neighbors()
         self.vertices = list(self.neighbors.copy().keys())
+        self.found_all_terms = False
 
         assert len(self.vertices) >= self.num_qubits, "Not enough qubits on the hardware."
     
@@ -233,9 +234,10 @@ class RoutedMultiplexer(object):
             self.gate_queue.append(prev_gate)
             self.gate_queue.append(cnot)
         
+        #Store last CNOT, if cnot[1] != self.num_control and the CNOTS match, back track the queue and cancel it
         if cnot[1] == self.num_controls:
             # if self.state[self.num_controls] not in self.discovered_pp_terms:
-            if self.state[self.num_controls] not in self.discovered_pp_terms and self.state[self.num_controls] in self.pp_terms:
+            if self.state[self.num_controls] not in self.discovered_pp_terms:
                 self.discovered_pp_terms.add(self.state[self.num_controls])
                 self.gate_queue.append(("RZ", self.state_to_angle_dict[self.state[self.num_controls]], self.num_controls))
             elif ignore and self.state[self.num_controls] in self.discovered_pp_terms:
@@ -263,7 +265,7 @@ class RoutedMultiplexer(object):
             self.cancel_or_append((grey_path[l - 1], grey_path[l]), ignore)
 
     def reset_state(self):
-        for i in range(self.num_controls):
+        for i in range(self.num_qubits):
             if (self.state[self.num_controls] >> i) & 1 == 1: 
                 arch_qubit = self.grey_to_arch_map[i]
                 arch_path = self.optimal_neighborhood[arch_qubit]
@@ -316,16 +318,21 @@ class RoutedMultiplexer(object):
         self.gate_queue.append(("RZ", self.multiplexer_angles[0], self.num_controls))
 
         for gate in grey_gates:
-            if self.discovered_pp_terms == self.pp_terms: break
+            if self.discovered_pp_terms == self.pp_terms: 
+                self.found_all_terms = True
+                break
             ctrl_qubit = gate[0]
             arch_qubit = self.grey_to_arch_map[ctrl_qubit]
             arch_path = self.optimal_neighborhood[arch_qubit]
             dist = len(arch_path) - 1
-            ignore = False if dist > 1 else True
+            ignore = False if dist > 1 or self.found_all_terms else True
             self.long_range_cnot(arch_path, ignore)
 
 
         if init_state != self.state:
+            # print("Entered reset state")
+            # for i in range(self.num_qubits):
+            #     print(bin(self.state[i]))   
             self.reset_state()
         unfound_terms = self.pp_terms - self.discovered_pp_terms
 
@@ -455,7 +462,8 @@ class RoutedMultiplexer(object):
 
         result = simulator.run(qc).result()
         unitary = result.get_unitary(qc)
-        print("Circuit unitary:\n", np.asarray(unitary).round(5))
+        print(np.array([unitary[i][i] for i in range(len(unitary))]))
+        # print("Circuit unitary:\n", np.asarray(unitary).round(5))
 
     def find_highest_degree_nodes(self):
         neighbors = {}

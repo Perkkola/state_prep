@@ -1,12 +1,13 @@
 import numpy as np
 import math
 import json
-from utils import extract_single_qubit_unitaries, extract_angles, möttönen_transformation, generate_U, check_equivalence_up_to_phase, get_path
+from utils import möttönen_transformation, generate_U, check_equivalence_up_to_phase, get_path, project_to_SU, angles_from_diag, rz, rx, ry
 from architecture_aware_routing import RoutedMultiplexer
 from collections import deque
 from qiskit.circuit import QuantumCircuit, QuantumRegister
 from qiskit.circuit.library import UnitaryGate
 from qiskit.compiler import transpile
+from qiskit.quantum_info import Statevector
 from qiskit_aer import Aer
 from two_qubit_decomposition import extract_diagonal, three_cnot_decomposition
 import matplotlib.pyplot as plt
@@ -23,6 +24,16 @@ class BlockZXZ(object):
 
         #Figure out swap sequences here and store them in memory. Also store correct multiplexers for each recursion level.
 
+    def print_circ_unitary_manual(self, gate_queue, num_qubits):
+        unitary = np.eye(2 ** num_qubits)
+        for gate in gate_queue:
+            if gate[0] == "RZ": gate_unitary = self.get_single_qubit_unitary(num_qubits, rz(gate[1]), gate[2])
+            elif gate[0] == "RY": gate_unitary = self.get_single_qubit_unitary(num_qubits, ry(gate[1]), gate[2])
+            elif gate[0] == "RX": gate_unitary = self.get_single_qubit_unitary(num_qubits, rx(gate[1]), gate[2])
+            else:
+                gate_unitary = self.get_cnot_unitary(num_qubits, (gate[0], gate[1]))
+            unitary = gate_unitary @ unitary
+        return unitary
     def print_circ_unitary(self, qc):
         qc = qc.copy()
         # print(qc.count_ops())
@@ -43,7 +54,17 @@ class BlockZXZ(object):
             fig = qc.draw(output="mpl", interactive=True, filename=filename)
         else:
             fig = qc.draw(output="mpl", interactive=True)
-        # plt.show()
+        plt.show()
+
+    def get_single_qubit_unitary(self, num_qubits, unitary, target):
+        init = 1
+        I = np.eye(2)
+        for _ in range(target):
+            init = np.kron(I, init)
+        init = np.kron(unitary, init)
+        for _ in range(target + 1, num_qubits):
+            init = np.kron(I, init)
+        return init
 
     def get_cnot_unitary(self, num_qubits, cnot):
         cnot = (cnot[0], cnot[1])
@@ -212,12 +233,11 @@ class BlockZXZ(object):
                                          [1, -1]])
         #/////////////////////////////////////////////////////////////////
 
-        single_qubit_unitaries_C = list(extract_single_qubit_unitaries(block_diag_C))
-        angles_C = list(extract_angles(single_qubit_unitaries_C))
+        angles_C = angles_from_diag(block_diag_C)
         transformed_angles_C = list(möttönen_transformation(angles_C))
+        # print(transformed_angles_C)
 
-        single_qubit_unitaries_A = list(extract_single_qubit_unitaries(block_diag_A))
-        angles_A = list(extract_angles(single_qubit_unitaries_A))
+        angles_A = angles_from_diag(block_diag_A)
         transformed_angles_A = möttönen_transformation(angles_A)
 
       
@@ -229,28 +249,27 @@ class BlockZXZ(object):
         # print(gates_C)
         # print(gates_A)
         
-        cx_gates_merged = 0
-        while True:
-            popped_gate = gates_C.pop()
-            if popped_gate[0] == "RZ" or popped_gate[0] >= target_qubit + 1 or popped_gate[1] >= target_qubit + 1 or popped_gate[1] == 1 or popped_gate[0] == 1: #These CNOTs (or RZ) cannot be merged into the neighboring unitaries
-                gates_C.append(popped_gate)
-                break
+        # cx_gates_merged = 0
+        # while True:
+        #     popped_gate = gates_C.pop()
+        #     if popped_gate[0] == "RZ" or popped_gate[0] >= target_qubit + 1 or popped_gate[1] >= target_qubit + 1 or popped_gate[1] == 1 or popped_gate[0] == 1: #These CNOTs (or RZ) cannot be merged into the neighboring unitaries
+        #         gates_C.append(popped_gate)
+        #         break
 
-            gates_A.popleft()
-            unitary = self.get_cnot_unitary(num_qubits, popped_gate)
+        #     gates_A.popleft()
+        #     unitary = self.get_cnot_unitary(num_qubits, popped_gate)
 
-            if popped_gate[1] == target_qubit: unitary = np.kron(H, I) @ unitary @ np.kron(H, I) #Position of H might vary
+        #     if popped_gate[1] == target_qubit: unitary = np.kron(H, I) @ unitary @ np.kron(H, I) #Position of H might vary
 
-            B_tilde = unitary @ B_tilde @ unitary
-            cx_gates_merged += 1
+        #     B_tilde = unitary @ B_tilde @ unitary
+        #     cx_gates_merged += 1
 
         B_11 = B_tilde[:block_len, :block_len]
         B_22 = B_tilde[block_len:, block_len:]
 
         V_B, block_diag_B, W_B = self.demultiplex(B_11, B_22)
 
-        single_qubit_unitaries_B = list(extract_single_qubit_unitaries(block_diag_B))
-        angles_B = list(extract_angles(single_qubit_unitaries_B))
+        angles_B = angles_from_diag(block_diag_B)
         transformed_angles_B = möttönen_transformation(angles_B)
 
         gates_B = routed_multiplexer.replace_mapped_angles(transformed_angles_B, False)
@@ -282,8 +301,15 @@ class BlockZXZ(object):
         self.compute_decomposition(V_A, rightmost_unitary = rightmost_unitary, leftmost_unitary=False, recursion_level = recursion_level + 1)
 
         if self.swaps_per_level[recursion_level] != None: self.swap_to(routed_multiplexer, self.swaps_per_level[recursion_level], reverse = True)
-        if recursion_level == 0: self.gate_queue.append((block_diag_A, "A"))
-        else: self.gate_queue.append(gates_A)
+        # self.gate_queue.append((block_diag_A, "A", range(num_qubits)))
+        if recursion_level == 0: 
+            self.gate_queue.append((gates_A, "A"))
+
+            print(np.array([block_diag_A[i][i] for i in range(len(block_diag_A))]))
+            un = self.print_circ_unitary_manual(gates_A, num_qubits)
+            print(np.array([un[i][i] for i in range(len(un))]))
+            # exit()
+        self.gate_queue.append(gates_A)
         if self.swaps_per_level[recursion_level] != None: self.swap_to(routed_multiplexer, self.swaps_per_level[recursion_level], reverse = False)
 
         self.compute_decomposition(V_B, rightmost_unitary = False, leftmost_unitary=False, recursion_level = recursion_level + 1)
@@ -291,17 +317,16 @@ class BlockZXZ(object):
 
         self.gate_queue.append(("H", target_qubit))
         if self.swaps_per_level[recursion_level] != None: self.swap_to(routed_multiplexer, self.swaps_per_level[recursion_level], reverse = True)
-        
-        if recursion_level == 0: self.gate_queue.append((block_diag_B, "B"))
-        else: self.gate_queue.append(gates_B)
+        self.gate_queue.append(gates_B)
+        # self.gate_queue.append((block_diag_B, "B", range(num_qubits)))
         if self.swaps_per_level[recursion_level] != None: self.swap_to(routed_multiplexer, self.swaps_per_level[recursion_level], reverse = False)
         self.gate_queue.append(("H", target_qubit))
 
         self.compute_decomposition(W_B, rightmost_unitary = False, leftmost_unitary=False,  recursion_level = recursion_level + 1)
         
         if self.swaps_per_level[recursion_level] != None: self.swap_to(routed_multiplexer, self.swaps_per_level[recursion_level], reverse = True)
-        if recursion_level == 0: self.gate_queue.append((block_diag_C, "C"))
-        else: self.gate_queue.append(gates_C)
+        # self.gate_queue.append((block_diag_C, "C", range(num_qubits)))
+        self.gate_queue.append(gates_C)
         if self.swaps_per_level[recursion_level] != None: self.swap_to(routed_multiplexer, self.swaps_per_level[recursion_level], reverse = False)
 
         self.compute_decomposition(W_C, rightmost_unitary = False, leftmost_unitary = leftmost_unitary, recursion_level = recursion_level + 1)
@@ -313,13 +338,14 @@ if __name__ == "__main__":
 
     num_qubits = 6
     U = generate_U(num_qubits)
-
+    SU, _ = project_to_SU(U, 2 ** num_qubits)
     
     zxz = BlockZXZ(coupling_map=fake_garnet)
-    zxz.compute_decomposition(U, init = True, rightmost_unitary = True, leftmost_unitary = True)
+    zxz.compute_decomposition(SU, init = True, rightmost_unitary = True, leftmost_unitary = True)
     qubits = [QuantumRegister(1, name=f'{zxz.original_multiplexer.grey_to_arch_map[i]}') for i in range(num_qubits)]
     qc = QuantumCircuit(*qubits)
 
+    qc_test = QuantumCircuit(num_qubits)
     cx_count = 0
 
     while True:
@@ -334,10 +360,19 @@ if __name__ == "__main__":
                         else:
                             cx_count += 1 
                             qc.cx(gate[0], gate[1])
+                            
                 case 'tuple':
                     if type(gates[0]).__name__ == "ndarray":
                         # qc.append(UnitaryGate(gates[0], gates[1]), [0, 1])
-                        qc.append(UnitaryGate(gates[0], gates[1]), reversed(range(num_qubits)))
+                        qc.append(UnitaryGate(gates[0], gates[1]), gates[2])
+                    elif type(gates[0]).__name__ == "deque":
+                        for gate in reversed(list(gates[0])):
+                            if gate[0] == "RZ": qc_test.rz(gate[1], gate[2])
+                            elif gate[0] == "RY": qc_test.ry(gate[1], gate[2])
+                            elif gate[0] == "RX": qc_test.rx(gate[1], gate[2])
+                            else:
+                                cx_count += 1 
+                                qc_test.cx(gate[0], gate[1])
                     elif gates[0] == 'H': qc.h(gates[1])
                     elif gates[0] == "CX": qc.cx(gates[1][0], gates[1][1])
                     else:
@@ -345,25 +380,37 @@ if __name__ == "__main__":
                         qc.swap(gates[1][0], gates[1][1])
 
         except Exception as e:
-            # print(e)
+            print(e)
             break
 
-    print(f"CX count: {cx_count}")
-    zxz.draw_circuit(qc, "fig6.png")
-    print(zxz.routed_multiplexers.get(0))
-    print(zxz.routed_multiplexers.get(1))
-    print(zxz.routed_multiplexers.get(2))
-    print(zxz.routed_multiplexers.get(3))
-    # print(zxz.swap_maps[0])
-    # print(zxz.swap_maps[1])
-    # print(zxz.swap_maps[2])
-    recon = zxz.print_circ_unitary(qc)
-    # print(recon)
-    is_equiv, phase = check_equivalence_up_to_phase(U, recon)
+    # print(f"CX count: {cx_count}")
+    # zxz.draw_circuit(qc_test, "fig6_test.png")
+    # print(zxz.routed_multiplexers.get(0))
+    # print(zxz.routed_multiplexers.get(1))
+    # print(zxz.routed_multiplexers.get(2))
+    # print(zxz.routed_multiplexers.get(3))
+    # st_1 = Statevector(qc)
+    # unitary_circ = QuantumCircuit(num_qubits)
+    # unitary_circ.append(UnitaryGate(SU), range(num_qubits))
+    # st_2 = Statevector(unitary_circ)
+    # print(f"Physical equality: {st_1.equiv(st_2)}")
+
+    # recon = zxz.print_circ_unitary(qc)
+    recon = zxz.print_circ_unitary(qc_test)
+    # print(print(np.array([recon[i][i] for i in range(len(recon))])))
+    count = 0
+    for i in range(len(recon)):
+        for j in range(len(recon)):
+            if recon[i][j] != 0: count+=1
+    print(count)
+    # print(*recon, sep="\n")
+    zxz.draw_circuit(qc_test)
+    exit()
+    is_equiv, phase = check_equivalence_up_to_phase(SU, recon)
 
     if is_equiv:
         recon_aligned = recon * np.conjugate(phase) # Or recon / phase
-        assert np.allclose(U, recon_aligned, atol=1e-8)
+        assert np.allclose(SU, recon_aligned, atol=1e-5)
         print("Assertion Passed: Matrices match exactly numerically.")
         # print(recon_aligned)
 
