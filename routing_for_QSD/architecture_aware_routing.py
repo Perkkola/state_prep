@@ -229,20 +229,21 @@ class RoutedMultiplexer(object):
     
     def cancel_or_append(self, cnot, ignore):
         prev_gate = self.gate_queue.pop()
-
+        cancelled = True
         if prev_gate != cnot:
             self.gate_queue.append(prev_gate)
             self.gate_queue.append(cnot)
+            cancelled = False
         
-        #Store last CNOT, if cnot[1] != self.num_control and the CNOTS match, back track the queue and cancel it
         if cnot[1] == self.num_controls:
-            # if self.state[self.num_controls] not in self.discovered_pp_terms:
             if self.state[self.num_controls] not in self.discovered_pp_terms:
                 self.discovered_pp_terms.add(self.state[self.num_controls])
                 self.gate_queue.append(("RZ", self.state_to_angle_dict[self.state[self.num_controls]], self.num_controls))
-            elif ignore and self.state[self.num_controls] in self.discovered_pp_terms:
+            elif ignore and self.state[self.num_controls] in self.discovered_pp_terms and not cancelled:
                 self.gate_queue.pop()
                 self.state[cnot[1]] ^= self.state[cnot[0]]
+
+        
     
     def long_range_cnot(self, arch_path, ignore = False):
 
@@ -318,25 +319,20 @@ class RoutedMultiplexer(object):
         self.gate_queue.append(("RZ", self.multiplexer_angles[0], self.num_controls))
 
         for gate in grey_gates:
-            if self.discovered_pp_terms == self.pp_terms: 
-                self.found_all_terms = True
-                break
             ctrl_qubit = gate[0]
             arch_qubit = self.grey_to_arch_map[ctrl_qubit]
             arch_path = self.optimal_neighborhood[arch_qubit]
             dist = len(arch_path) - 1
-            ignore = False if dist > 1 or self.found_all_terms else True
+            ignore = False if dist > 1 else True
             self.long_range_cnot(arch_path, ignore)
 
 
         if init_state != self.state:
-            # print("Entered reset state")
-            # for i in range(self.num_qubits):
-            #     print(bin(self.state[i]))   
             self.reset_state()
         unfound_terms = self.pp_terms - self.discovered_pp_terms
 
         if len(unfound_terms) > 0:
+            self.reset_state()
             self.find_missing_terms(unfound_terms)
 
         circuit_length = len([gate for gate in self.gate_queue if gate[0] != "RZ"])
@@ -464,65 +460,3 @@ class RoutedMultiplexer(object):
         unitary = result.get_unitary(qc)
         print(np.array([unitary[i][i] for i in range(len(unitary))]))
         # print("Circuit unitary:\n", np.asarray(unitary).round(5))
-
-    def find_highest_degree_nodes(self):
-        neighbors = {}
-        highest_degree_nodes = {}
-        highest_degree = 0
-        for edge in self.coupling_map:
-            if neighbors.get(edge[0]) == None: neighbors[edge[0]] = [set(), 0]
-            if neighbors.get(edge[1]) == None: neighbors[edge[1]] = [set(), 0]
-
-            n_0 = neighbors[edge[0]]
-            n_1 = neighbors[edge[1]]
-
-            n_0[0].add(edge[1])
-            n_0[1] = len(n_0[0])
-
-            n_1[0].add(edge[0])
-            n_1[1] = len(n_1[0])
-
-            for index, candidate in enumerate([n_0, n_1]):
-                if candidate[1] > highest_degree:
-                    highest_degree_nodes = {}
-                    highest_degree_nodes[edge[index]] = candidate[0]
-                    highest_degree = candidate[1]
-                elif candidate[1] == highest_degree:
-                    highest_degree_nodes[edge[index]] = candidate[0]
-                else: continue
-
-        print(highest_degree_nodes, highest_degree)
-    
-        
-        # print(neighbors)
-
-if __name__ == "__main__":
-    num_qubits = int(sys.argv[1])
-    assert num_qubits > 1
-
-    with open(f"coupling_maps/fake_garnet.json") as f:
-        fake_garnet = json.load(f)
-
-    fake_cairo = FakeCairoV2()
-
-
-    # multiplexor_unitary = generate_random_rz_multiplexer_unitary_fast(num_qubits)
-    # # print(multiplexor_unitary)
-    # single_qubit_unitaries = list(extract_single_qubit_unitaries(multiplexor_unitary))
-    # angles = list(extract_angles(single_qubit_unitaries))
-
-    angles = random_angles(2 ** (num_qubits - 1))
-
-    # transformed_angles = list(möttönen_transformation(angles))
-
-
-    routed_multiplexer = RoutedMultiplexer(multiplexer_angles= angles, coupling_map= fake_garnet)
-    routed_multiplexer.map_grey_qubits_to_arch_unitary_synth()
-    # routed_multiplexer.find_optimal_neighborhood()
-    # cx_count = routed_multiplexer.map_grey_qubits_to_arch(set_last_two_adjacent = True)
-    exit()
-    # qc = routed_multiplexer.get_circuit()
-    # print(routed_multiplexer.grey_to_arch_map)
-    # routed_multiplexer.draw_circuit(qc, "figure_1.png")
-    # routed_multiplexer.print_circ_unitary(qc)
-    print(f"Number of cx: {cx_count}")

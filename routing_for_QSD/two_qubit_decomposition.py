@@ -1,6 +1,5 @@
 import numpy as np
 from utils import orthogonal_congruence_diagonalize, get_zyz_angles, ry, rz, rx
-from pennylane.math import partial_trace
 from collections import deque
 from qiskit import QuantumCircuit
 from qiskit.circuit.library import UnitaryGate
@@ -65,6 +64,26 @@ def gamma_map(u):
     assert len(u) == 4
     return u @ sigma_y_kron_2 @ u.T @ sigma_y_kron_2
 
+def extract_tensor_factors(M):
+    M_reshaped = M.reshape(2, 2, 2, 2)
+    M_reordered = M_reshaped.transpose(0, 2, 1, 3)
+    M_flat = M_reordered.reshape(4, 4)
+    
+    # 2. SVD to extract the rank-1 tensor components
+    u, s, vh = np.linalg.svd(M_flat)
+    
+    a = u[:, 0].reshape(2, 2)
+    b = vh[0, :].reshape(2, 2)
+    
+    # 3. Restore the unitary scale (SVD vectors have norm 1, Unitaries have norm sqrt(2))
+    a = a * np.sqrt(s[0])
+    b = b * np.sqrt(s[0])
+    
+    # 4. Strip the arbitrary SVD complex phase to enforce strict SU(2) symmetry
+    a = a / np.sqrt(np.linalg.det(a))
+    b = b / np.sqrt(np.linalg.det(b))
+    
+    return a, b
 
 def get_single_qubit_unitaries(U_E, k_E):
     S_U = U_E @ (U_E.T)
@@ -73,24 +92,16 @@ def get_single_qubit_unitaries(U_E, k_E):
     A_U = orthogonal_congruence_diagonalize(S_U)
     B_k = orthogonal_congruence_diagonalize(S_k)
 
+    if np.real(np.linalg.det(A_U @ B_k.T)) < 0:
+            A_U[:, 0] = -A_U[:, 0]
 
     C = np.conjugate(k_E).T @ B_k @ A_U.T @ U_E
 
     A_tilde =  E @ A_U @ B_k.T @ E_dgr
     C_tilde = E @ C @ E_dgr
 
-    a = partial_trace(A_tilde, indices=[1])
-    b = partial_trace(A_tilde, indices=[0])
-    c = partial_trace(C_tilde, indices=[1])
-    d = partial_trace(C_tilde, indices=[0])
-
-    a = project_to_SU2(a)
-    b = project_to_SU2(b)
-    c = project_to_SU2(c)
-    d = project_to_SU2(d)
-
-    a = -a if np.round(np.kron(a, b)[0][0], 32) == -np.round(A_tilde[0][0], 32) else a
-    c = -c if np.round(np.kron(c, d)[0][0], 32) == -np.round(C_tilde[0][0], 32) else c
+    a, b = extract_tensor_factors(A_tilde)
+    c, d = extract_tensor_factors(C_tilde)
 
     return a, b, c, d
 
@@ -104,17 +115,23 @@ def extract_diagonal(u, source):
     t_3 = M[2][2]
     t_4 = M[3][3]
 
-    psi = np.atan2(np.imag(t_1 + t_2 + t_3 + t_4), np.real(t_1 + t_4 - t_3 - t_2)) # Swap t_4 and t_2
+    # psi = np.atan2(np.imag(t_1 + t_2 + t_3 + t_4), np.real(t_1 + t_4 - t_3 - t_2)) # Swap t_4 and t_2
+    num = np.imag(t_1 + t_2 + t_3 + t_4)
+    den = np.real(t_1 + t_4 - t_3 - t_2)
+    if abs(num) < 1e-12 and abs(den) < 1e-12:
+        psi = 0.0
+    else:
+        psi = np.atan2(num, den) # Swap t_4 and t_2
+
     Delta =  cnot_1_2 @ np.kron(I, rz(psi)) @ cnot_1_2
     gamma_U_Delta = gamma_map(U @ Delta)
     eigvals = np.linalg.eigvals(gamma_U_Delta)
 
-    angles = [np.angle(eigval) for eigval in eigvals if np.angle(eigval) >= 0]
+    angles = np.sort(np.angle(eigvals))
 
-    assert len(angles) >= 2, "Need positive r and s"
 
-    theta = (angles[0] + angles[1]) / 2
-    phi = (angles[0] - angles[1]) / 2
+    theta = (angles[0] + angles[2]) / 2
+    phi = (angles[0] - angles[2]) / 2
 
     U_E = (E_dgr @ U @ Delta @ E)
 
@@ -123,9 +140,16 @@ def extract_diagonal(u, source):
 
     a, b, c, d = get_single_qubit_unitaries(U_E, k_E)
 
-    # recon = np.kron(-a, b) @ kernel @ np.kron(c, d) @ cnot_1_2 @ np.kron(I, rz(-psi)) @ cnot_1_2
+    recon = np.kron(a, b) @ kernel @ np.kron(c, d) @ cnot_1_2 @ np.kron(I, rz(-psi)) @ cnot_1_2
     # recon = np.kron(-a, b) @ kernel @ np.kron(c, d)
     diag_u = cnot_1_2 @ np.kron(I, rz(-psi)) @ cnot_1_2
+
+    phase_diff = np.trace(np.conjugate(recon).T @ U) / 4
+    if np.real(phase_diff) < -0.5:
+        a = -a
+
+    # if not np.allclose(np.kron(a, b) @ kernel @ np.kron(c, d) @ cnot_1_2 @ np.kron(I, rz(-psi)) @ cnot_1_2, U):
+    #     print(f"Unitary mismatch")
 
     a_1, a_2, a_3 = get_zyz_angles(a)
     b_1, b_2, b_3 = get_zyz_angles(b)
@@ -169,7 +193,11 @@ def three_cnot_decomposition(u, source):
 
     a, b, c, d = get_single_qubit_unitaries(U_E, k_E)
 
-    # recon = np.kron(a, b) @ kernel @ np.kron(c, d)
+    recon = np.kron(a, b) @ kernel @ np.kron(c, d)
+    phase_diff = np.trace(np.conjugate(recon).T @ U) / 4
+    
+    if np.real(phase_diff) < -0.5:
+        a = -a
 
     a_1, a_2, a_3 = get_zyz_angles(a)
     b_1, b_2, b_3 = get_zyz_angles(b)

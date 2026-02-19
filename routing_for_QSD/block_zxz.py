@@ -11,6 +11,7 @@ from qiskit.quantum_info import Statevector
 from qiskit_aer import Aer
 from two_qubit_decomposition import extract_diagonal, three_cnot_decomposition
 import matplotlib.pyplot as plt
+from qiskit_ibm_runtime.fake_provider import FakeCairoV2
 
 class BlockZXZ(object):
     def __init__(self, coupling_map = None):
@@ -128,12 +129,14 @@ class BlockZXZ(object):
             target = multiplexer.grey_to_arch_map[i - 1]
             path_to_root = multiplexer.optimal_neighborhood[target]
 
+            # path_to_root = [multiplexer.grey_to_arch_map[x] for x in range(i)]
+
             best_cost = multiplexer.get_multiplexer_cost(i, multiplexer.arch_qubits, multiplexer.arch_to_grey_map, target)
             best_arch_to_grey = multiplexer.arch_to_grey_map.copy()
             best_swap_count = 0
             furthest = multiplexer.grey_to_arch_map[0]
             last_cnot_dist = len(list(get_path(multiplexer.neighbors, multiplexer.arch_qubits, target, furthest))) - 1
-            best_cost -= ((4 * last_cnot_dist - 4) - 1) if last_cnot_dist > 1 else 1 #Last CNOT can be absorbed into the next unitary.
+            best_cost -= (4 * last_cnot_dist - 4) if last_cnot_dist > 1 else 1 #Last CNOT can be absorbed into the next unitary.
 
 
             arch_to_grey_copy = multiplexer.arch_to_grey_map.copy()
@@ -145,7 +148,7 @@ class BlockZXZ(object):
                 swap_count += 1
                 current_cost = multiplexer.get_multiplexer_cost(i, multiplexer.arch_qubits, arch_to_grey_copy, path_to_root[j - 1])
                 last_cnot_dist = len(list(get_path(multiplexer.neighbors, multiplexer.arch_qubits, path_to_root[j - 1], furthest))) - 1
-                current_cost -= ((4 * last_cnot_dist - 4) - 1) if last_cnot_dist > 1 else 1 
+                current_cost -= (4 * last_cnot_dist - 4) if last_cnot_dist > 1 else 1 
                 current_cost += swap_count * 3 * 2
 
                 if current_cost < best_cost:
@@ -153,9 +156,6 @@ class BlockZXZ(object):
                     best_arch_to_grey = arch_to_grey_copy.copy()
                     best_swap_count = swap_count
 
-
-
-            
             current_level_multiplexer = multiplexer.copy()
             current_level_multiplexer.arch_to_grey_map = best_arch_to_grey
             current_level_multiplexer.grey_to_arch_map = {item: key for key, item in best_arch_to_grey.items()}
@@ -249,20 +249,33 @@ class BlockZXZ(object):
         # print(gates_C)
         # print(gates_A)
         
-        # cx_gates_merged = 0
-        # while True:
-        #     popped_gate = gates_C.pop()
-        #     if popped_gate[0] == "RZ" or popped_gate[0] >= target_qubit + 1 or popped_gate[1] >= target_qubit + 1 or popped_gate[1] == 1 or popped_gate[0] == 1: #These CNOTs (or RZ) cannot be merged into the neighboring unitaries
-        #         gates_C.append(popped_gate)
-        #         break
+        while True:
+            popped_gate = gates_C.pop()
+            if popped_gate[0] == "RZ":
+                next_cnot = gates_C.pop()
+                if next_cnot[0] == 0 and next_cnot[1] == 1:
+                    gates_C.append(popped_gate)
+                    popped_gate = next_cnot
 
-        #     gates_A.popleft()
-        #     unitary = self.get_cnot_unitary(num_qubits, popped_gate)
+                    rz_a = gates_A.popleft()
+                    gates_A.popleft()
+                    gates_A.appendleft(rz_a)
+                else:
+                    gates_C.append(next_cnot)
+                    gates_C.append(popped_gate)
+                    break
+            elif popped_gate[0] >= target_qubit + 1 or popped_gate[1] >= target_qubit + 1 or (popped_gate[1] == 0 and popped_gate[0] == 1): #These CNOTs (or RZ) cannot be merged into the neighboring unitaries
+                gates_C.append(popped_gate)
+                break
+            else:
+                gates_A.popleft()
 
-        #     if popped_gate[1] == target_qubit: unitary = np.kron(H, I) @ unitary @ np.kron(H, I) #Position of H might vary
+            # print(popped_gate)
+            unitary = self.get_cnot_unitary(num_qubits, popped_gate)
 
-        #     B_tilde = unitary @ B_tilde @ unitary
-        #     cx_gates_merged += 1
+            unitary = np.kron(H, I) @ unitary @ np.kron(H, I) #Position of H might vary
+
+            B_tilde = unitary @ B_tilde @ unitary
 
         B_11 = B_tilde[:block_len, :block_len]
         B_22 = B_tilde[block_len:, block_len:]
@@ -301,14 +314,6 @@ class BlockZXZ(object):
         self.compute_decomposition(V_A, rightmost_unitary = rightmost_unitary, leftmost_unitary=False, recursion_level = recursion_level + 1)
 
         if self.swaps_per_level[recursion_level] != None: self.swap_to(routed_multiplexer, self.swaps_per_level[recursion_level], reverse = True)
-        # self.gate_queue.append((block_diag_A, "A", range(num_qubits)))
-        if recursion_level == 0: 
-            self.gate_queue.append((gates_A, "A"))
-
-            print(np.array([block_diag_A[i][i] for i in range(len(block_diag_A))]))
-            un = self.print_circ_unitary_manual(gates_A, num_qubits)
-            print(np.array([un[i][i] for i in range(len(un))]))
-            # exit()
         self.gate_queue.append(gates_A)
         if self.swaps_per_level[recursion_level] != None: self.swap_to(routed_multiplexer, self.swaps_per_level[recursion_level], reverse = False)
 
@@ -318,14 +323,12 @@ class BlockZXZ(object):
         self.gate_queue.append(("H", target_qubit))
         if self.swaps_per_level[recursion_level] != None: self.swap_to(routed_multiplexer, self.swaps_per_level[recursion_level], reverse = True)
         self.gate_queue.append(gates_B)
-        # self.gate_queue.append((block_diag_B, "B", range(num_qubits)))
         if self.swaps_per_level[recursion_level] != None: self.swap_to(routed_multiplexer, self.swaps_per_level[recursion_level], reverse = False)
         self.gate_queue.append(("H", target_qubit))
 
         self.compute_decomposition(W_B, rightmost_unitary = False, leftmost_unitary=False,  recursion_level = recursion_level + 1)
         
         if self.swaps_per_level[recursion_level] != None: self.swap_to(routed_multiplexer, self.swaps_per_level[recursion_level], reverse = True)
-        # self.gate_queue.append((block_diag_C, "C", range(num_qubits)))
         self.gate_queue.append(gates_C)
         if self.swaps_per_level[recursion_level] != None: self.swap_to(routed_multiplexer, self.swaps_per_level[recursion_level], reverse = False)
 
@@ -336,82 +339,70 @@ if __name__ == "__main__":
     with open(f"coupling_maps/fake_garnet.json") as f:
         fake_garnet = json.load(f)
 
-    num_qubits = 6
-    U = generate_U(num_qubits)
-    SU, _ = project_to_SU(U, 2 ** num_qubits)
-    
-    zxz = BlockZXZ(coupling_map=fake_garnet)
-    zxz.compute_decomposition(SU, init = True, rightmost_unitary = True, leftmost_unitary = True)
-    qubits = [QuantumRegister(1, name=f'{zxz.original_multiplexer.grey_to_arch_map[i]}') for i in range(num_qubits)]
-    qc = QuantumCircuit(*qubits)
+    fake_cairo = FakeCairoV2()
+    for num_qubits in range(3, 9):
+    # num_qubits = 6
+        U = generate_U(num_qubits)
+        zxz = BlockZXZ(coupling_map=list(fake_cairo.coupling_map))
+        # zxz = BlockZXZ(coupling_map=fake_garnet)
+        zxz.compute_decomposition(U, init = True, rightmost_unitary = True, leftmost_unitary = True)
+        qubits = [QuantumRegister(1, name=f'{zxz.original_multiplexer.grey_to_arch_map[i]}') for i in range(num_qubits)]
+        qc = QuantumCircuit(*qubits)
 
-    qc_test = QuantumCircuit(num_qubits)
-    cx_count = 0
+        qc_test = QuantumCircuit(num_qubits)
+        cx_count = 0
 
-    while True:
-        try:
-            gates = zxz.gate_queue.pop()
-            match type(gates).__name__:
-                case 'deque':
-                    for gate in list(gates):
-                        if gate[0] == "RZ": qc.rz(gate[1], gate[2])
-                        elif gate[0] == "RY": qc.ry(gate[1], gate[2])
-                        elif gate[0] == "RX": qc.rx(gate[1], gate[2])
-                        else:
-                            cx_count += 1 
-                            qc.cx(gate[0], gate[1])
-                            
-                case 'tuple':
-                    if type(gates[0]).__name__ == "ndarray":
-                        # qc.append(UnitaryGate(gates[0], gates[1]), [0, 1])
-                        qc.append(UnitaryGate(gates[0], gates[1]), gates[2])
-                    elif type(gates[0]).__name__ == "deque":
-                        for gate in reversed(list(gates[0])):
-                            if gate[0] == "RZ": qc_test.rz(gate[1], gate[2])
-                            elif gate[0] == "RY": qc_test.ry(gate[1], gate[2])
-                            elif gate[0] == "RX": qc_test.rx(gate[1], gate[2])
+        while True:
+            try:
+                gates = zxz.gate_queue.pop()
+                match type(gates).__name__:
+                    case 'deque':
+                        for gate in list(gates):
+                            if gate[0] == "RZ": qc.rz(gate[1], gate[2])
+                            elif gate[0] == "RY": qc.ry(gate[1], gate[2])
+                            elif gate[0] == "RX": qc.rx(gate[1], gate[2])
                             else:
                                 cx_count += 1 
-                                qc_test.cx(gate[0], gate[1])
-                    elif gates[0] == 'H': qc.h(gates[1])
-                    elif gates[0] == "CX": qc.cx(gates[1][0], gates[1][1])
-                    else:
-                        cx_count += 3 
-                        qc.swap(gates[1][0], gates[1][1])
+                                qc.cx(gate[0], gate[1])
+                                
+                    case 'tuple':
+                        if type(gates[0]).__name__ == "ndarray":
+                            # qc.append(UnitaryGate(gates[0], gates[1]), [0, 1])
+                            qc.append(UnitaryGate(gates[0], gates[1]), gates[2])
+                        elif type(gates[0]).__name__ == "deque":
+                            for gate in reversed(list(gates[0])):
+                                if gate[0] == "RZ": qc_test.rz(gate[1], gate[2])
+                                elif gate[0] == "RY": qc_test.ry(gate[1], gate[2])
+                                elif gate[0] == "RX": qc_test.rx(gate[1], gate[2])
+                                else:
+                                    cx_count += 1 
+                                    qc_test.cx(gate[0], gate[1])
+                        elif gates[0] == 'H': qc.h(gates[1])
+                        elif gates[0] == "CX": qc.cx(gates[1][0], gates[1][1])
+                        else:
+                            cx_count += 3 
+                            qc.swap(gates[1][0], gates[1][1])
 
-        except Exception as e:
-            print(e)
-            break
+            except Exception as e:
+                print(e)
+                break
 
-    # print(f"CX count: {cx_count}")
-    # zxz.draw_circuit(qc_test, "fig6_test.png")
-    # print(zxz.routed_multiplexers.get(0))
-    # print(zxz.routed_multiplexers.get(1))
-    # print(zxz.routed_multiplexers.get(2))
-    # print(zxz.routed_multiplexers.get(3))
-    # st_1 = Statevector(qc)
-    # unitary_circ = QuantumCircuit(num_qubits)
-    # unitary_circ.append(UnitaryGate(SU), range(num_qubits))
-    # st_2 = Statevector(unitary_circ)
-    # print(f"Physical equality: {st_1.equiv(st_2)}")
+        print(f"CX count: {cx_count}, num_qubits: {num_qubits}")
+        # zxz.draw_circuit(qc, "cairo_test.png")
+        # print(zxz.routed_multiplexers[0])
+        # print(zxz.swap_maps)
+        # print(zxz.swaps_per_level)
+        recon = zxz.print_circ_unitary(qc)
 
-    # recon = zxz.print_circ_unitary(qc)
-    recon = zxz.print_circ_unitary(qc_test)
-    # print(print(np.array([recon[i][i] for i in range(len(recon))])))
-    count = 0
-    for i in range(len(recon)):
-        for j in range(len(recon)):
-            if recon[i][j] != 0: count+=1
-    print(count)
-    # print(*recon, sep="\n")
-    zxz.draw_circuit(qc_test)
+        is_equiv, phase = check_equivalence_up_to_phase(U, recon)
+
+        if is_equiv:
+            recon_aligned = recon * np.conjugate(phase) # Or recon / phase
+            assert np.allclose(U, recon_aligned, atol=1e-5)
+            print("Assertion Passed: Matrices match exactly numerically.")
+            # print(recon_aligned)
+
     exit()
-    is_equiv, phase = check_equivalence_up_to_phase(SU, recon)
-
-    if is_equiv:
-        recon_aligned = recon * np.conjugate(phase) # Or recon / phase
-        assert np.allclose(SU, recon_aligned, atol=1e-5)
-        print("Assertion Passed: Matrices match exactly numerically.")
-        # print(recon_aligned)
+   
 
 

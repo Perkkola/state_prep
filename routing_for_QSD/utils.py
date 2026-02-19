@@ -106,7 +106,7 @@ def simultaneous_diagonalization(s_x, s_y, tol=1e-12):
     diag_s_y = np.real_if_close(diag_s_y)
     return v_final, diag_s_x, diag_s_y
 
-def orthogonal_congruence_diagonalize(S, tol_eig=1e-8):
+def orthogonal_congruence_diagonalize(S, tol_eig=1e-1): #Lower value gives better succes chance for larger qubit count???? Look into this if time
     """
     Given a complex symmetric 4x4 matrix S = S.T,
     returns real orthogonal A and diagonal D (complex phases)
@@ -366,7 +366,7 @@ def get_zyz_angles(U):
     theta = 2 * np.arctan2(np.abs(u10), np.abs(u00))
     
     # Define a small tolerance for float comparison
-    TOL = 1e-32
+    TOL = 1e-64
 
     # 2. Calculate Phi and Lambda (Handling singularities)
     if np.abs(u10) < TOL: # Theta is approx 0

@@ -1,0 +1,46 @@
+Prelim results:
+Garnet
+        Proposed:
+                Num qubits      CX count
+                3               27
+                4               153
+                5               683
+                6               2917
+                7               11973
+                8               48981
+                9               197629
+                10              825193
+
+        Qiskit:
+                Num qubits      CX count
+                3               33
+                4               183
+                5               867
+                6               3630
+                7               14603
+                8               60413
+                9               236553
+                10              
+
+Cairo
+        Proposed:
+            Num qubits      CX count
+            3               27
+            4               145
+            5               691
+            6               3033
+            7               12179
+            8               50133
+            9               206339
+            10              885049
+
+        Qiskit:
+            Num qubits      CX count
+            3               30
+            4               177
+            5               795
+            6               3351
+            7               14717
+            8               59748.0
+            9               
+            10     
