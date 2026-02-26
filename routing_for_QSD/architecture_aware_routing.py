@@ -10,6 +10,7 @@ import sys
 import math
 import json
 from utils import get_grey_gates, möttönen_transformation, random_angles, get_path
+from cluster_finding import find_closest_cluster
 import numpy as np
 from gray_synth import synth_cnot_phase_aam
 
@@ -170,6 +171,20 @@ class RoutedMultiplexer(object):
                             optimal_neighborhoods.append((s[0].copy(), s[2].copy()))
                     found_neighborhood = True
         return optimal_neighborhoods
+    
+    def find_optimal_neighborhood_closest_cluster(self):
+        cluster_e, _ = find_closest_cluster(self.num_qubits, self.coupling_map, self.neighbors, method="exact")
+        root = cluster_e[0]
+        paths = {root: [root]}
+        for node in cluster_e:
+            if node != root:
+                path = list(get_path(self.neighbors, set(cluster_e), root, node))
+                paths[node] = path
+                
+        return paths
+                    
+
+
     
     def recompute_optimal_neighborhood(self):
         new_optimal_neighborhood = {}
@@ -460,3 +475,11 @@ class RoutedMultiplexer(object):
         unitary = result.get_unitary(qc)
         print(np.array([unitary[i][i] for i in range(len(unitary))]))
         # print("Circuit unitary:\n", np.asarray(unitary).round(5))
+
+
+if __name__ == "__main__":
+    with open(f"coupling_maps/fake_garnet.json") as f:
+        fake_garnet = json.load(f)
+
+    r = RoutedMultiplexer(coupling_map=fake_garnet, num_qubits=6)
+    r.find_optimal_neighborhood_closest_cluster()

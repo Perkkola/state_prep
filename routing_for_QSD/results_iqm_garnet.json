@@ -1,0 +1,68 @@
+{
+  "qiskit": {
+    "3": {
+      "cx_count": 29,
+      "time_s": 0.03,
+      "error": null
+    },
+    "4": {
+      "cx_count": 183,
+      "time_s": 0.11,
+      "error": null
+    },
+    "5": {
+      "cx_count": 903,
+      "time_s": 0.36,
+      "error": null
+    },
+    "6": {
+      "cx_count": 3792,
+      "time_s": 1.69,
+      "error": null
+    }
+  },
+  "tket": {
+    "3": {
+      "cx_count": 31,
+      "time_s": 2.41,
+      "error": null
+    },
+    "4": {
+      "cx_count": 151,
+      "time_s": 4.18,
+      "error": null
+    },
+    "5": {
+      "cx_count": 651,
+      "time_s": 12.66,
+      "error": null
+    },
+    "6": {
+      "cx_count": 2728,
+      "time_s": 43.69,
+      "error": null
+    }
+  },
+  "pennylane": {
+    "3": {
+      "cx_count": 40,
+      "time_s": 2.37,
+      "error": null
+    },
+    "4": {
+      "cx_count": 221,
+      "time_s": 0.21,
+      "error": null
+    },
+    "5": {
+      "cx_count": 963,
+      "time_s": 3.06,
+      "error": null
+    },
+    "6": {
+      "cx_count": 4033,
+      "time_s": 41.74,
+      "error": null
+    }
+  }
+}

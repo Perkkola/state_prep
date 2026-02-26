@@ -340,11 +340,11 @@ if __name__ == "__main__":
         fake_garnet = json.load(f)
 
     fake_cairo = FakeCairoV2()
-    for num_qubits in range(3, 9):
+    for num_qubits in range(6, 7):
     # num_qubits = 6
         U = generate_U(num_qubits)
-        zxz = BlockZXZ(coupling_map=list(fake_cairo.coupling_map))
-        # zxz = BlockZXZ(coupling_map=fake_garnet)
+        # zxz = BlockZXZ(coupling_map=list(fake_cairo.coupling_map))
+        zxz = BlockZXZ(coupling_map=fake_garnet)
         zxz.compute_decomposition(U, init = True, rightmost_unitary = True, leftmost_unitary = True)
         qubits = [QuantumRegister(1, name=f'{zxz.original_multiplexer.grey_to_arch_map[i]}') for i in range(num_qubits)]
         qc = QuantumCircuit(*qubits)
@@ -388,11 +388,14 @@ if __name__ == "__main__":
                 break
 
         print(f"CX count: {cx_count}, num_qubits: {num_qubits}")
-        # zxz.draw_circuit(qc, "cairo_test.png")
-        # print(zxz.routed_multiplexers[0])
+        # zxz.draw_circuit(qc, "fig_6.png")
+        print(zxz.routed_multiplexers[0])
+        print(zxz.routed_multiplexers[1])
+        print(zxz.routed_multiplexers[2])
+        print(zxz.routed_multiplexers[3])
         # print(zxz.swap_maps)
         # print(zxz.swaps_per_level)
-        recon = zxz.print_circ_unitary(qc)
+        recon = zxz.print_circ_unitary(qc,)
 
         is_equiv, phase = check_equivalence_up_to_phase(U, recon)
 
