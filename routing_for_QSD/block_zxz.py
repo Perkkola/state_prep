@@ -22,8 +22,6 @@ class BlockZXZ(object):
         self.swaps_per_level = {}
         self.swap_maps = {}
 
-        #Figure out swap sequences here and store them in memory. Also store correct multiplexers for each recursion level.
-
     def print_circ_unitary_manual(self, gate_queue, num_qubits):
         unitary = np.eye(2 ** num_qubits)
         for gate in gate_queue:
@@ -34,10 +32,9 @@ class BlockZXZ(object):
                 gate_unitary = self.get_cnot_unitary(num_qubits, (gate[0], gate[1]))
             unitary = gate_unitary @ unitary
         return unitary
+    
     def print_circ_unitary(self, qc):
         qc = qc.copy()
-        # print(qc.count_ops())
-        # qc = transpile(qc, optimization_level=0, basis_gates=['cx', 'h', 'x', 'rz', 'rx', 'ry'])
         qc.save_unitary()
         simulator = Aer.get_backend('aer_simulator')
         qc = transpile(qc, simulator)
@@ -49,22 +46,54 @@ class BlockZXZ(object):
         return UU
 
     def draw_circuit(self, qc, filename=None):
-        # qc = transpile(qc, optimization_level=0, basis_gates=['cx', 'h', 'x', 'rz', 'rx', 'ry'])
         if filename != None:
             fig = qc.draw(output="mpl", interactive=True, filename=filename)
         else:
             fig = qc.draw(output="mpl", interactive=True)
         plt.show()
 
-    def circuit_from_deque(self, deque, num_qubits):
-        qc = QuantumCircuit(num_qubits)
-        for gate in reversed(list(deque)):
-            if gate[0] == "RZ": qc.rz(gate[1], gate[2])
-            elif gate[0] == "RY": qc.ry(gate[1], gate[2])
-            elif gate[0] == "RX": qc.rx(gate[1], gate[2])
-            else:
-                qc.cx(gate[0], gate[1])
-        return qc
+    def circuit_from_gate_queue(self, num_qubits):
+        qubits = [QuantumRegister(1, name=f'{self.original_multiplexer.grey_to_arch_map[i]}') for i in range(num_qubits)]
+        qc = QuantumCircuit(*qubits)
+
+        qc_test = QuantumCircuit(num_qubits)
+        cx_count = 0
+
+        while True:
+            try:
+                gates = self.gate_queue.pop()
+                match type(gates).__name__:
+                    case 'deque':
+                        for gate in list(gates):
+                            if gate[0] == "RZ": qc.rz(gate[1], gate[2])
+                            elif gate[0] == "RY": qc.ry(gate[1], gate[2])
+                            elif gate[0] == "RX": qc.rx(gate[1], gate[2])
+                            else:
+                                cx_count += 1 
+                                qc.cx(gate[0], gate[1])
+                                
+                    case 'tuple':
+                        if type(gates[0]).__name__ == "ndarray":
+                            qc.append(UnitaryGate(gates[0], gates[1]), gates[2])
+                        elif type(gates[0]).__name__ == "deque":
+                            for gate in reversed(list(gates[0])):
+                                if gate[0] == "RZ": qc_test.rz(gate[1], gate[2])
+                                elif gate[0] == "RY": qc_test.ry(gate[1], gate[2])
+                                elif gate[0] == "RX": qc_test.rx(gate[1], gate[2])
+                                else:
+                                    cx_count += 1 
+                                    qc_test.cx(gate[0], gate[1])
+                        elif gates[0] == 'H': qc.h(gates[1])
+                        elif gates[0] == "CX": qc.cx(gates[1][0], gates[1][1])
+                        else:
+                            cx_count += 3 
+                            qc.swap(gates[1][0], gates[1][1])
+
+            except Exception as e:
+                print(e)
+                break
+        return qc, cx_count
+
 
     def get_single_qubit_unitary(self, num_qubits, unitary, target):
         init = 1
@@ -349,53 +378,13 @@ if __name__ == "__main__":
         fake_garnet = json.load(f)
 
     fake_marrakesh = FakeMarrakesh()
-    for num_qubits in range(3, 11):
+    for num_qubits in range(3, 9):
     # num_qubits = 6
         U = generate_U(num_qubits)
-        # zxz = BlockZXZ(coupling_map=list(fake_cairo.coupling_map))
-        zxz = BlockZXZ(coupling_map=list(fake_marrakesh.coupling_map))
-        # zxz = BlockZXZ(coupling_map=fake_garnet)
+        # zxz = BlockZXZ(coupling_map=list(fake_marrakesh.coupling_map))
+        zxz = BlockZXZ(coupling_map=fake_garnet)
         zxz.compute_decomposition(U, init = True, rightmost_unitary = True, leftmost_unitary = True)
-        qubits = [QuantumRegister(1, name=f'{zxz.original_multiplexer.grey_to_arch_map[i]}') for i in range(num_qubits)]
-        qc = QuantumCircuit(*qubits)
-
-        qc_test = QuantumCircuit(num_qubits)
-        cx_count = 0
-
-        while True:
-            try:
-                gates = zxz.gate_queue.pop()
-                match type(gates).__name__:
-                    case 'deque':
-                        for gate in list(gates):
-                            if gate[0] == "RZ": qc.rz(gate[1], gate[2])
-                            elif gate[0] == "RY": qc.ry(gate[1], gate[2])
-                            elif gate[0] == "RX": qc.rx(gate[1], gate[2])
-                            else:
-                                cx_count += 1 
-                                qc.cx(gate[0], gate[1])
-                                
-                    case 'tuple':
-                        if type(gates[0]).__name__ == "ndarray":
-                            # qc.append(UnitaryGate(gates[0], gates[1]), [0, 1])
-                            qc.append(UnitaryGate(gates[0], gates[1]), gates[2])
-                        elif type(gates[0]).__name__ == "deque":
-                            for gate in reversed(list(gates[0])):
-                                if gate[0] == "RZ": qc_test.rz(gate[1], gate[2])
-                                elif gate[0] == "RY": qc_test.ry(gate[1], gate[2])
-                                elif gate[0] == "RX": qc_test.rx(gate[1], gate[2])
-                                else:
-                                    cx_count += 1 
-                                    qc_test.cx(gate[0], gate[1])
-                        elif gates[0] == 'H': qc.h(gates[1])
-                        elif gates[0] == "CX": qc.cx(gates[1][0], gates[1][1])
-                        else:
-                            cx_count += 3 
-                            qc.swap(gates[1][0], gates[1][1])
-
-            except Exception as e:
-                print(e)
-                break
+        qc, cx_count = zxz.circuit_from_gate_queue(num_qubits)
 
         print(f"CX count: {cx_count}, num_qubits: {num_qubits}")
         # zxz.draw_circuit(qc, "fig_6.png")
