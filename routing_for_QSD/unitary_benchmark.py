@@ -46,12 +46,12 @@ from scipy.stats import unitary_group
 QUBIT_MIN = 3
 QUBIT_MAX = 10
 SEED = 42
-POOL_LIBRARIES = ["qiskit", "tket", "pennylane"]
+POOL_LIBRARIES = ["qiskit", "tket"]
 BQSKIT_LABEL   = "bqskit"
 
-IQM_TOKEN = "3BGYdJuhl8pAeYUNcJ3b9r6r2CtXuGPHdjwA1StOaGUBmnyXrB9+EKROdY4Q4p4w"
-IBM_TOKEN = "lHhLWN4ikFtkvi1wOg-ZOMEzJ9q570vRuAHvJ6KuUfZO"
-IBM_INSTANCE = "crn:v1:bluemix:public:quantum-computing:us-east:a/f7249990eab24728afe12aeb2a10b716:b042a5f9-8d13-4ea6-80c0-986c0641c3a1::"
+IQM_TOKEN = None
+IBM_TOKEN = None
+IBM_INSTANCE = None
 # ═══════════════════════════════════════════════════════════════════════
 #  Architecture Definitions
 # ═══════════════════════════════════════════════════════════════════════

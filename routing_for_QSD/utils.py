@@ -273,7 +273,7 @@ def angles_from_diag(diag):
     half = len(diag) // 2
     for i in range(half):
         j = int((f"{{:0>{int(math.log2(half))}b}}".format(i))[::-1], 2) 
-        angles.append(np.angle(diag[half + j][half + j]))
+        angles.append(np.angle(diag[half + i][half + i]))
     return angles
 
 def extract_angles_from_eigvals(eigvals):
@@ -295,14 +295,14 @@ def clean_matrix(M):
             M[i][j] = '{0:.12}'.format(M[i][j])
     return M
 
-def _möttönen_transformation(start, stop, n, num_controls, global_angles, transformed_angles_name):
+def _möttönen_transformation(start, stop, n, num_controls, global_angles, transformed_angles_name, gray_code):
     existing_transformed_angles = shared_memory.SharedMemory(name=transformed_angles_name)
     transformed_angles = np.ndarray((n,), buffer=existing_transformed_angles.buf)
 
     power = math.pow(2, -num_controls)
     for i in range(start, stop):
         temp = 0
-        g_m = i ^ (i >> 1)
+        g_m = i ^ (i >> 1) if gray_code == None else gray_code[i]
         for j in range(n):
             dot_product = bin(g_m & j).count('1') % 2
             temp +=  -global_angles[j]  if dot_product == 1 else global_angles[j]
@@ -310,7 +310,7 @@ def _möttönen_transformation(start, stop, n, num_controls, global_angles, tran
 
     existing_transformed_angles.close()
 
-def möttönen_transformation(multiplexer_angles):
+def möttönen_transformation(multiplexer_angles, gray_code = None):
         global_angles = np.array(multiplexer_angles)
         n = len(multiplexer_angles)
         transformed_angles = np.zeros(n)
@@ -327,7 +327,7 @@ def möttönen_transformation(multiplexer_angles):
             for i in range(cores):
                 start = int((n / cores) * i)
                 stop = min(int((n / cores) * (i + 1)), n)
-                p = multiprocessing.Process(target = _möttönen_transformation, args=(start, stop, n, num_controls, global_angles, shm_transformed_angles.name))
+                p = multiprocessing.Process(target = _möttönen_transformation, args=(start, stop, n, num_controls, global_angles, shm_transformed_angles.name, gray_code))
                 jobs.append(p)
                 p.start()
 
@@ -341,7 +341,7 @@ def möttönen_transformation(multiplexer_angles):
             power = math.pow(2, -num_controls)
             for i in range(n):
                 temp = 0
-                g_m = i ^ (i >> 1)
+                g_m = i ^ (i >> 1) if gray_code == None else gray_code[i]
                 for j in range(n):
                     dot_product = bin(g_m & j).count('1') % 2
                     temp +=  -global_angles[j]  if dot_product == 1 else global_angles[j]
@@ -400,9 +400,9 @@ def check_equivalence_up_to_phase(u_orig, u_recon):
 
     # 2. The magnitude of the overlap should be equal to the dimension (4)
     dim = u_orig.shape[0]
-    print(dim)
-    print(overlap)
-    print(np.abs(overlap))
+    # print(dim)
+    # print(overlap)
+    # print(np.abs(overlap))
     if not np.isclose(np.abs(overlap), dim, atol=1e-5):
         print(f"FAILED: Matrices are not equivalent. Overlap magnitude: {np.abs(overlap)}")
         return False, None

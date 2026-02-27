@@ -93,7 +93,7 @@ def find_closest_cluster_exact(
             best_cost = cost
             best_cluster = list(combo)
 
-    return order_cluster(best_cluster, dist), best_cost
+    return order_cluster(best_cluster, dist), dist
 
 
 # ── Greedy solver (scalable heuristic) ────────────────────────────
@@ -154,7 +154,7 @@ def find_closest_cluster_greedy(
         for node in list(candidate_cost):
             candidate_cost[node] += dist[node].get(best_node, inf)
 
-    return order_cluster(cluster, dist), cluster_cost(cluster, dist)
+    return order_cluster(cluster, dist), dist
 
 
 # ── Convenience wrapper ───────────────────────────────────────────
@@ -191,34 +191,3 @@ def find_closest_cluster(
         return find_closest_cluster_exact(n, neighbors)
     else:
         return find_closest_cluster_greedy(n, neighbors)
-
-
-# ── Demo ──────────────────────────────────────────────────────────
-
-if __name__ == "__main__":
-    edges = [
-        [0, 1], [1, 2], [2, 3], [3, 4], [4, 5],
-        [0, 5], [1, 5], [2, 4], [0, 2], [3, 6],
-        [6, 7], [7, 8], [8, 9],
-    ]
-
-    neighbors: dict[int, set[int]] = {}
-    for u, v in edges:
-        neighbors.setdefault(u, set()).add(v)
-        neighbors.setdefault(v, set()).add(u)
-
-    cluster_size = 4
-
-    print(f"Graph: {len(neighbors)} nodes, {len(edges)} edges")
-    print(f"Looking for the closest cluster of {cluster_size} nodes\n")
-
-    cluster_e, cost_e = find_closest_cluster(cluster_size, edges, neighbors, method="exact")
-    print(f"Exact :  total pairwise dist={cost_e}")
-    for idx, node in enumerate(cluster_e):
-        print(f"  index {idx} -> node {node}")
-
-    print()
-    cluster_g, cost_g = find_closest_cluster(cluster_size, edges, neighbors, method="greedy")
-    print(f"Greedy:  total pairwise dist={cost_g}")
-    for idx, node in enumerate(cluster_g):
-        print(f"  index {idx} -> node {node}")
