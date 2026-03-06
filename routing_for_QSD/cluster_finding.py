@@ -174,7 +174,7 @@ def find_closest_cluster(
     edges      : list of [u, v] edges (used only for validation here)
     neighbors  : adjacency dict  {node: set(neighbor_nodes)}
     method     : "exact", "greedy", or "auto"
-                 ("auto" picks exact when C(|V|,n) <= 50 000)
+                 ("auto" picks exact when C(|V|,n) <= 50 000 000)
 
     Returns
     -------
@@ -185,7 +185,7 @@ def find_closest_cluster(
     if method == "auto":
         # Rough estimate of combination count
         from math import comb
-        method = "exact" if comb(num_nodes, n) <= 50_000 else "greedy"
+        method = "exact" if comb(num_nodes, n) <= 5000000 else "greedy"
 
     if method == "exact":
         return find_closest_cluster_exact(n, neighbors)

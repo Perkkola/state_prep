@@ -185,6 +185,7 @@ class BlockZXZ(object):
                 arch_to_grey_copy[path_to_root[j - 1]] = temp
 
                 multiplexer_cp.arch_to_grey_map = arch_to_grey_copy.copy()
+                multiplexer_cp.grey_to_arch_map = {item: key for key, item in multiplexer_cp.arch_to_grey_map.items()}
                 multiplexer_cp.root = path_to_root[j - 1]
                 swap_count += 1
                 current_cost = multiplexer_cp.get_optimal_gery_code()
@@ -210,6 +211,8 @@ class BlockZXZ(object):
             else: 
                 self.swaps_per_level[recursion_level] = path_to_root[len(path_to_root) - 1 - best_swap_count:]
                 self.swap_maps[recursion_level] = {swapped: orig for orig, swapped in zip(self.original_multiplexer.arch_to_grey_map.values(), current_level_multiplexer.arch_to_grey_map.values())}
+                current_level_multiplexer.swap_map = self.swap_maps[recursion_level]
+                current_level_multiplexer.inverse_swap_map = {item: key for key, item in self.swap_maps[recursion_level].items()}
             self.routed_multiplexers[recursion_level] = current_level_multiplexer
 
             multiplexer.num_qubits = multiplexer.num_qubits - 1
@@ -324,27 +327,27 @@ class BlockZXZ(object):
         gates_B = routed_multiplexer.replace_mapped_angles(transformed_angles_B, False)
 
         #Move this inside the execute_gates() -call
-        if self.swap_maps[recursion_level] != None:
-            new_gates_A = deque()
-            new_gates_B = deque()
-            new_gates_C = deque()
-            swap_map = self.swap_maps[recursion_level]
-            for gate in gates_A:
-                if gate[0] != "RZ":
-                    new_gates_A.append((swap_map[gate[0]], swap_map[gate[1]]))
-                else: new_gates_A.append((gate[0], gate[1], swap_map[gate[2]]))
-            for gate in gates_B:
-                if gate[0] != "RZ":
-                    new_gates_B.append((swap_map[gate[0]], swap_map[gate[1]]))
-                else: new_gates_B.append((gate[0], gate[1], swap_map[gate[2]]))
-            for gate in gates_C:
-                if gate[0] != "RZ":
-                    new_gates_C.append((swap_map[gate[0]], swap_map[gate[1]]))
-                else: new_gates_C.append((gate[0], gate[1], swap_map[gate[2]]))
+        # if self.swap_maps[recursion_level] != None:
+        #     new_gates_A = deque()
+        #     new_gates_B = deque()
+        #     new_gates_C = deque()
+        #     swap_map = self.swap_maps[recursion_level]
+        #     for gate in gates_A:
+        #         if gate[0] != "RZ":
+        #             new_gates_A.append((swap_map[gate[0]], swap_map[gate[1]]))
+        #         else: new_gates_A.append((gate[0], gate[1], swap_map[gate[2]]))
+        #     for gate in gates_B:
+        #         if gate[0] != "RZ":
+        #             new_gates_B.append((swap_map[gate[0]], swap_map[gate[1]]))
+        #         else: new_gates_B.append((gate[0], gate[1], swap_map[gate[2]]))
+        #     for gate in gates_C:
+        #         if gate[0] != "RZ":
+        #             new_gates_C.append((swap_map[gate[0]], swap_map[gate[1]]))
+        #         else: new_gates_C.append((gate[0], gate[1], swap_map[gate[2]]))
 
-            gates_A = new_gates_A
-            gates_B = new_gates_B
-            gates_C = new_gates_C
+        #     gates_A = new_gates_A
+        #     gates_B = new_gates_B
+        #     gates_C = new_gates_C
 
         
         #THIS IS REVERSED FOR A REASON
@@ -378,16 +381,17 @@ if __name__ == "__main__":
         fake_garnet = json.load(f)
 
     fake_marrakesh = FakeMarrakesh()
-    for num_qubits in range(3, 9):
+    for num_qubits in range(6, 7):
     # num_qubits = 6
         U = generate_U(num_qubits)
-        # zxz = BlockZXZ(coupling_map=list(fake_marrakesh.coupling_map))
-        zxz = BlockZXZ(coupling_map=fake_garnet)
+        zxz = BlockZXZ(coupling_map=list(fake_marrakesh.coupling_map))
+        # zxz = BlockZXZ(coupling_map=fake_garnet)
         zxz.compute_decomposition(U, init = True, rightmost_unitary = True, leftmost_unitary = True)
         qc, cx_count = zxz.circuit_from_gate_queue(num_qubits)
 
         print(f"CX count: {cx_count}, num_qubits: {num_qubits}")
-        # zxz.draw_circuit(qc, "fig_6.png")
+        print(zxz.swap_maps)
+        # zxz.draw_circuit(qc)
         # print(zxz.original_multiplexer)
         # print(zxz.routed_multiplexers[0])
         # print(zxz.routed_multiplexers[1])
