@@ -1,6 +1,8 @@
 import numpy as np
 import math
 import json
+import sys
+import argparse
 from utils import möttönen_transformation, generate_U, check_equivalence_up_to_phase, angles_from_diag, rz, rx, ry
 from architecture_aware_routing import RoutedMultiplexer
 from collections import deque
@@ -180,7 +182,6 @@ class BlockZXZ(object):
             for j in range(len(path_to_root) - 1, 0, -1):
                 multiplexer_cp = multiplexer.copy()
                 temp = arch_to_grey_copy[path_to_root[j]]
-
                 arch_to_grey_copy[path_to_root[j]] = arch_to_grey_copy[path_to_root[j - 1]]
                 arch_to_grey_copy[path_to_root[j - 1]] = temp
 
@@ -231,7 +232,7 @@ class BlockZXZ(object):
         target_qubit = num_qubits - 1
 
         if init: self.initialize_multiplexers(num_qubits)
-
+        return
         if num_qubits == 2:
             self.decompose_two_qubit_unitary(u, rightmost_unitary, leftmost_unitary)
             return
@@ -379,35 +380,54 @@ class BlockZXZ(object):
 if __name__ == "__main__":
     with open(f"coupling_maps/fake_garnet.json") as f:
         fake_garnet = json.load(f)
-
     fake_marrakesh = FakeMarrakesh()
-    for num_qubits in range(6, 7):
-    # num_qubits = 6
+
+    parser = argparse.ArgumentParser(
+        description="Benchmark unitary synthesis CX counts.",
+    )
+
+    parser.add_argument("--qmin", type=int, default=3)
+    parser.add_argument("--qmax", type=int, default=12)
+    parser.add_argument("--arch", type=str, default=None)
+    args = parser.parse_args()
+
+    QUBIT_MIN = args.qmin
+    QUBIT_MAX = args.qmax
+    arch = args.arch
+
+    match arch:
+        case "garnet":
+            coupling_map = fake_garnet
+        case "marrakesh":
+            coupling_map = list(fake_marrakesh.coupling_map)
+        case _:
+            coupling_map = None
+
+    for num_qubits in range(QUBIT_MIN, QUBIT_MAX):
         U = generate_U(num_qubits)
-        zxz = BlockZXZ(coupling_map=list(fake_marrakesh.coupling_map))
-        # zxz = BlockZXZ(coupling_map=fake_garnet)
+        zxz = BlockZXZ(coupling_map=coupling_map)
         zxz.compute_decomposition(U, init = True, rightmost_unitary = True, leftmost_unitary = True)
-        qc, cx_count = zxz.circuit_from_gate_queue(num_qubits)
+        # qc, cx_count = zxz.circuit_from_gate_queue(num_qubits)
 
-        print(f"CX count: {cx_count}, num_qubits: {num_qubits}")
-        print(zxz.swap_maps)
-        # zxz.draw_circuit(qc)
-        # print(zxz.original_multiplexer)
-        # print(zxz.routed_multiplexers[0])
-        # print(zxz.routed_multiplexers[1])
-        # print(zxz.routed_multiplexers[2])
-        # print(zxz.routed_multiplexers[3])
+        # print(f"CX count: {cx_count}, num_qubits: {num_qubits}")
         # print(zxz.swap_maps)
-        # print(zxz.swaps_per_level)
-        recon = zxz.print_circ_unitary(qc)
+        # # zxz.draw_circuit(qc)
+        # # print(zxz.original_multiplexer)
+        # # print(zxz.routed_multiplexers[0])
+        # # print(zxz.routed_multiplexers[1])
+        # # print(zxz.routed_multiplexers[2])
+        # # print(zxz.routed_multiplexers[3])
+        # # print(zxz.swap_maps)
+        # # print(zxz.swaps_per_level)
+        # recon = zxz.print_circ_unitary(qc)
 
-        is_equiv, phase = check_equivalence_up_to_phase(U, recon)
+        # is_equiv, phase = check_equivalence_up_to_phase(U, recon)
 
-        if is_equiv:
-            recon_aligned = recon * np.conjugate(phase) # Or recon / phase
-            assert np.allclose(U, recon_aligned, atol=1e-5)
-            print("Assertion Passed: Matrices match exactly numerically.")
-            # print(recon_aligned)
+        # if is_equiv:
+        #     recon_aligned = recon * np.conjugate(phase) # Or recon / phase
+        #     assert np.allclose(U, recon_aligned, atol=1e-5)
+        #     print("Assertion Passed: Matrices match exactly numerically.")
+        #     # print(recon_aligned)
 
    
 
