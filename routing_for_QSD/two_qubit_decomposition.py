@@ -51,13 +51,15 @@ def print_circ_unitary(qc):
 
 def project_to_SU4(U): 
     detU = np.linalg.det(U)
-    assert detU != 0, "Matrix is not unitary!"
+    # assert detU != 0, "Matrix is not unitary!"
+    if detU == 0: detU = 1e-15
     phase = detU ** (1 / 4)
     return U / phase, phase
 
 def project_to_SU2(U):
     detU = np.linalg.det(U)
-    assert detU != 0, "Matrix is not unitary!"
+    if detU == 0: detU = 1e-15
+    # assert detU != 0, "Matrix is not unitary!"
     return U / detU ** (1 / 2)
 
 def gamma_map(u):

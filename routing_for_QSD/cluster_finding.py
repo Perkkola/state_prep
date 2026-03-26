@@ -103,23 +103,23 @@ def find_closest_cluster_exact(
     # print(best_cluster)
     # print(f"Pairwise dist sum: {cluster_cost(best_cluster, dist)}")
 
-    ordered_cluster = order_cluster(best_cluster, dist)
-    numerator = 0
-    denominator = 0
-    for i in range(2, len(ordered_cluster)):
-        subset = ordered_cluster[:i]
-        average_pairwise_distance = cluster_cost(subset, dist) / binom(len(subset), 2)
-        uc_gates_cnot_count_sum = cnot_count_for_uc_gates_per_recursion_level(n-i-1, n)
-        average_pairwise_distances.append(average_pairwise_distance)
-        uc_gate_cnot_counts.append(uc_gates_cnot_count_sum)
-        numerator += average_pairwise_distance * uc_gates_cnot_count_sum
-        denominator += uc_gates_cnot_count_sum
+    # ordered_cluster = order_cluster(best_cluster, dist)
+    # numerator = 0
+    # denominator = 0
+    # for i in range(2, len(ordered_cluster)):
+    #     subset = ordered_cluster[:i]
+    #     average_pairwise_distance = cluster_cost(subset, dist) / binom(len(subset), 2)
+    #     uc_gates_cnot_count_sum = cnot_count_for_uc_gates_per_recursion_level(n-i-1, n)
+    #     average_pairwise_distances.append(average_pairwise_distance)
+    #     uc_gate_cnot_counts.append(uc_gates_cnot_count_sum)
+    #     numerator += average_pairwise_distance * uc_gates_cnot_count_sum
+    #     denominator += uc_gates_cnot_count_sum
 
-    d_eff = numerator / denominator
-    print(d_eff)
-    # print(average_pairwise_distances)
-    # print(uc_gate_cnot_counts)
-    # exit()
+    # d_eff = numerator / denominator
+    # print(d_eff)
+    # # print(average_pairwise_distances)
+    # # print(uc_gate_cnot_counts)
+    # # exit()
     return order_cluster(best_cluster, dist), dist
 
 
@@ -181,23 +181,23 @@ def find_closest_cluster_greedy(
         for node in list(candidate_cost):
             candidate_cost[node] += dist[node].get(best_node, inf)
 
-    ordered_cluster = order_cluster(cluster, dist)
-    numerator = 0
-    denominator = 0
-    for i in range(2, len(ordered_cluster)):
-        subset = ordered_cluster[:i]
-        average_pairwise_distance = cluster_cost(subset, dist) / binom(len(subset), 2)
-        uc_gates_cnot_count_sum = cnot_count_for_uc_gates_per_recursion_level(n-i-1, n)
-        average_pairwise_distances.append(average_pairwise_distance)
-        uc_gate_cnot_counts.append(uc_gates_cnot_count_sum)
-        numerator += average_pairwise_distance * uc_gates_cnot_count_sum
-        denominator += uc_gates_cnot_count_sum
+    # ordered_cluster = order_cluster(cluster, dist)
+    # numerator = 0
+    # denominator = 0
+    # for i in range(2, len(ordered_cluster)):
+    #     subset = ordered_cluster[:i]
+    #     average_pairwise_distance = cluster_cost(subset, dist) / binom(len(subset), 2)
+    #     uc_gates_cnot_count_sum = cnot_count_for_uc_gates_per_recursion_level(n-i-1, n)
+    #     average_pairwise_distances.append(average_pairwise_distance)
+    #     uc_gate_cnot_counts.append(uc_gates_cnot_count_sum)
+    #     numerator += average_pairwise_distance * uc_gates_cnot_count_sum
+    #     denominator += uc_gates_cnot_count_sum
 
-    d_eff = numerator / denominator
-    print(d_eff)
-    # print(average_pairwise_distances)
-    # print(uc_gate_cnot_counts)
-    # exit()
+    # d_eff = numerator / denominator
+    # print(d_eff)
+    # # print(average_pairwise_distances)
+    # # print(uc_gate_cnot_counts)
+    # # exit()
 
     return order_cluster(cluster, dist), dist
 
@@ -230,7 +230,7 @@ def find_closest_cluster(
     if method == "auto":
         # Rough estimate of combination count
         from math import comb
-        method = "exact" if comb(num_nodes, n) <= 5000000 else "greedy"
+        method = "exact" if comb(num_nodes, n) <= 50000 else "greedy"
 
     if method == "exact":
         return find_closest_cluster_exact(n, neighbors)

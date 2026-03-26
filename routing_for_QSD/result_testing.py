@@ -26,8 +26,8 @@ iqm_runtime = {
 ibm_runtime = {
     "proposed": [0.01, 0.03, 0.08, 0.23, 0.92, 4.02, 17.1, 75.9, 334.67],
     "tket": [18.8, 27.1, 61.0, 195.7, 538.5, 1224.8, ],
-    "qiskit": [2.93, 3.03, 3.23, 5.1, 12.23, 31.21, 132.6, 617.2, ],
-    "pennylane": [9.1, 4.3, 14.4, 104.3, 1374.3, ]
+    "qiskit": [2.93, 3.03, 3.23, 5.1, 12.23, 31.21, 132.6, 617.2 ],
+    "pennylane": [9.1, 4.3, 14.4, 104.3, 1374.3 ]
 }
 
 garnet_ratios = []
@@ -41,8 +41,8 @@ for theoretical, proposed in zip(theoretical_cnot_count, ibm_qubit["proposed"]):
     print(f"CNOT count overhead of proposed method compared to theoretical on IBM Marrakesh: {(proposed ) / theoretical}")
     marrakesh_ratios.append((proposed ) / theoretical)
 
-print(f"Ratio growth factor for IQM Garnet: {statistics.mean(garnet_ratios[2:])} +- {np.std(garnet_ratios[2:])}")
-print(f"Ratio growth factor for IBM Marrakesh: {statistics.mean(marrakesh_ratios[2:])} +- {np.std(marrakesh_ratios[2:])}")
+print(f"Ratio growth factor for IQM Garnet: {statistics.mean(garnet_ratios[:])} +- {np.std(garnet_ratios[:])}")
+print(f"Ratio growth factor for IBM Marrakesh: {statistics.mean(marrakesh_ratios[:])} +- {np.std(marrakesh_ratios[:])}")
 exit()
 
 for key, value in iqm_qubit.items():

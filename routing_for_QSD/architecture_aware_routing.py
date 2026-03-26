@@ -26,8 +26,6 @@ class RoutedMultiplexer(object):
         self.neighbors = self.get_neighbors()
         self.vertices = list(self.neighbors.copy().keys())
         self.found_all_terms = False
-        self.swap_map = None
-        self.inverse_swap_map = None
 
         assert len(self.vertices) >= self.num_qubits, "Not enough qubits on the hardware."
     
@@ -124,14 +122,7 @@ class RoutedMultiplexer(object):
             for j in range(i):
                 cnots[ self.num_controls - 1 - j] *= 2
 
-
         total_cost = reduce(lambda x, y: x + y[1] * self.long_range_cnot_cost(y[0]), zip(map(lambda z: z[1], dists_list), cnots.values()), 0)
-
-        last_cnot = self.grey_gate_queue.pop()
-        self.grey_gate_queue.append(last_cnot)
-        last_gate_cost = self.long_range_cnot_cost(dists[self.grey_to_arch_map[last_cnot[0]]])
-
-        total_cost -= last_gate_cost
         return total_cost
 
     def cancel_or_append(self, cnot, ignore):
@@ -141,23 +132,14 @@ class RoutedMultiplexer(object):
             self.gate_queue.append(prev_gate)
             self.gate_queue.append(cnot)
             cancelled = False
-
-        if self.swap_map != None:
-            if self.inverse_swap_map[cnot[1]] == self.num_controls:
-                if self.state[self.num_controls] not in self.discovered_pp_terms:
-                    self.discovered_pp_terms.add(self.state[self.num_controls])
-                    self.gate_queue.append(("RZ", self.state_to_angle_dict[self.state[self.num_controls]], self.swap_map[self.num_controls]))
-                elif ignore and self.state[self.num_controls] in self.discovered_pp_terms and not cancelled:
-                    self.gate_queue.pop()
-                    self.state[self.inverse_swap_map[cnot[1]]] ^= self.state[self.inverse_swap_map[cnot[0]]]
-        else:
-            if cnot[1] == self.num_controls:
-                if self.state[self.num_controls] not in self.discovered_pp_terms:
-                    self.discovered_pp_terms.add(self.state[self.num_controls])
-                    self.gate_queue.append(("RZ", self.state_to_angle_dict[self.state[self.num_controls]], self.num_controls))
-                elif ignore and self.state[self.num_controls] in self.discovered_pp_terms and not cancelled:
-                    self.gate_queue.pop()
-                    self.state[cnot[1]] ^= self.state[cnot[0]]
+        
+        if cnot[1] == self.num_controls:
+            if self.state[self.num_controls] not in self.discovered_pp_terms:
+                self.discovered_pp_terms.add(self.state[self.num_controls])
+                self.gate_queue.append(("RZ", self.state_to_angle_dict[self.state[self.num_controls]], self.num_controls))
+            elif ignore and self.state[self.num_controls] in self.discovered_pp_terms and not cancelled:
+                self.gate_queue.pop()
+                self.state[cnot[1]] ^= self.state[cnot[0]]
 
         
     
@@ -165,39 +147,21 @@ class RoutedMultiplexer(object):
 
         grey_path = list(reversed(list(map(lambda arch_qubit: self.arch_to_grey_map[arch_qubit], arch_path))))
         grey_path_dist = len(grey_path)
+        for i in range(grey_path_dist - 1):
+            self.state[grey_path[i + 1]] ^= self.state[grey_path[i]]
+            self.cancel_or_append((grey_path[i], grey_path[i + 1]), ignore)
 
-        if self.swap_map != None:
-            for i in range(grey_path_dist - 1):
-                self.state[grey_path[i + 1]] ^= self.state[grey_path[i]]
-                self.cancel_or_append((self.swap_map[grey_path[i]], self.swap_map[grey_path[i + 1]]), ignore)
+        for j in range(grey_path_dist - 2, 0, -1):
+            self.state[grey_path[j]] ^= self.state[grey_path[j - 1]]
+            self.cancel_or_append((grey_path[j - 1], grey_path[j]), ignore)
 
-            for j in range(grey_path_dist - 2, 0, -1):
-                self.state[grey_path[j]] ^= self.state[grey_path[j - 1]]
-                self.cancel_or_append((self.swap_map[grey_path[j - 1]], self.swap_map[grey_path[j]]), ignore)
+        for k in range(1, grey_path_dist - 1):
+            self.state[grey_path[k + 1]] ^= self.state[grey_path[k]]
+            self.cancel_or_append((grey_path[k], grey_path[k + 1]), ignore)
 
-            for k in range(1, grey_path_dist - 1):
-                self.state[grey_path[k + 1]] ^= self.state[grey_path[k]]
-                self.cancel_or_append((self.swap_map[grey_path[k]], self.swap_map[grey_path[k + 1]]), ignore)
-
-            for l in range(grey_path_dist - 2, 1, -1):
-                self.state[grey_path[l]] ^= self.state[grey_path[l - 1]]
-                self.cancel_or_append((self.swap_map[grey_path[l - 1]], self.swap_map[grey_path[l]]), ignore)
-        else:
-            for i in range(grey_path_dist - 1):
-                self.state[grey_path[i + 1]] ^= self.state[grey_path[i]]
-                self.cancel_or_append((grey_path[i], grey_path[i + 1]), ignore)
-
-            for j in range(grey_path_dist - 2, 0, -1):
-                self.state[grey_path[j]] ^= self.state[grey_path[j - 1]]
-                self.cancel_or_append((grey_path[j - 1], grey_path[j]), ignore)
-
-            for k in range(1, grey_path_dist - 1):
-                self.state[grey_path[k + 1]] ^= self.state[grey_path[k]]
-                self.cancel_or_append((grey_path[k], grey_path[k + 1]), ignore)
-
-            for l in range(grey_path_dist - 2, 1, -1):
-                self.state[grey_path[l]] ^= self.state[grey_path[l - 1]]
-                self.cancel_or_append((grey_path[l - 1], grey_path[l]), ignore)
+        for l in range(grey_path_dist - 2, 1, -1):
+            self.state[grey_path[l]] ^= self.state[grey_path[l - 1]]
+            self.cancel_or_append((grey_path[l - 1], grey_path[l]), ignore)
 
     def reset_state(self):
         for i in range(self.num_qubits):
@@ -249,10 +213,7 @@ class RoutedMultiplexer(object):
         init_state = self.state.copy()
 
         self.gate_queue = deque()
-        if self.swap_map != None:
-            self.gate_queue.append(("RZ", self.multiplexer_angles[0], self.swap_map[self.num_controls]))
-        else:
-            self.gate_queue.append(("RZ", self.multiplexer_angles[0], self.num_controls))
+        self.gate_queue.append(("RZ", self.multiplexer_angles[0], self.num_controls))
 
         for gate in self.grey_gate_queue:
             ctrl_qubit = gate[0]
@@ -268,6 +229,7 @@ class RoutedMultiplexer(object):
         unfound_terms = self.pp_terms - self.discovered_pp_terms
 
         if len(unfound_terms) > 0:
+            print(f"Unfound terms: {len(unfound_terms)}")
             self.reset_state()
             self.find_missing_terms(unfound_terms)
 
@@ -309,13 +271,11 @@ class RoutedMultiplexer(object):
         cp.furthest_node = self.furthest_node
         cp.arch_to_grey_map = self.arch_to_grey_map.copy()
         cp.grey_to_arch_map = self.grey_to_arch_map.copy()
+        # cp.arch_gates = self.arch_gates.copy()
         cp.arch_qubits = self.arch_qubits.copy()
         cp.optimal_neighborhood = self.optimal_neighborhood.copy()
         cp.pairwise_dists = self.pairwise_dists
         cp.grey_code = self.grey_code
         cp.grey_gate_queue = self.grey_gate_queue
         cp.grey_state_queue = self.grey_state_queue
-
-        if self.swap_map != None: cp.swap_map = self.swap_map.copy()
-        if self.inverse_swap_map != None: cp.inverse_swap_map = self.inverse_swap_map.copy()
         return cp
