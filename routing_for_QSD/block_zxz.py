@@ -151,7 +151,7 @@ class BlockZXZ(object):
 
         eigval, eigvec = np.linalg.eig(u_1_u_2_dgr)
 
-        diag = np.diag([np.sqrt(x) for x in eigval])
+        diag = np.diag([np.sqrt(x) for x in eigval]) # 'check for zeros
         V = eigvec
         W = diag @ np.conj(V.T) @ u_2
 

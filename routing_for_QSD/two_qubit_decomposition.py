@@ -82,8 +82,8 @@ def extract_tensor_factors(M):
     b = b * np.sqrt(s[0])
     
     # 4. Strip the arbitrary SVD complex phase to enforce strict SU(2) symmetry
-    a = a / np.sqrt(np.linalg.det(a))
-    b = b / np.sqrt(np.linalg.det(b))
+    a = a / np.sqrt(np.linalg.det(a)) if np.linalg.det(a) != 0 else a / 1e-15
+    b = b / np.sqrt(np.linalg.det(b)) if np.linalg.det(b) != 0 else b / 1e-15
     
     return a, b
 
