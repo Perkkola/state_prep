@@ -271,7 +271,6 @@ class RoutedMultiplexer(object):
         cp.furthest_node = self.furthest_node
         cp.arch_to_grey_map = self.arch_to_grey_map.copy()
         cp.grey_to_arch_map = self.grey_to_arch_map.copy()
-        # cp.arch_gates = self.arch_gates.copy()
         cp.arch_qubits = self.arch_qubits.copy()
         cp.optimal_neighborhood = self.optimal_neighborhood.copy()
         cp.pairwise_dists = self.pairwise_dists

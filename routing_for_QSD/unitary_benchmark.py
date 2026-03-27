@@ -34,6 +34,9 @@ import time
 import traceback
 import multiprocessing as mp
 from pathlib import Path
+import os
+from dotenv import load_dotenv
+load_dotenv()
 
 import numpy as np
 from scipy.stats import unitary_group
@@ -46,12 +49,13 @@ from scipy.stats import unitary_group
 QUBIT_MIN = 3
 QUBIT_MAX = 10
 SEED = 42
-POOL_LIBRARIES = ["qiskit", "tket"]
+POOL_LIBRARIES = ["qiskit", "tket", "pennylane"]
 BQSKIT_LABEL   = "bqskit"
 
-IQM_TOKEN = None
-IBM_TOKEN = None
-IBM_INSTANCE = None
+#Note
+IQM_KEY = os.environ["IQM_KEY"]
+IBM_TOKEN = os.environ["IBM_TOKEN"]
+IBM_INSTANCE = os.environ["IBM_INSTANCE"]
 # ═══════════════════════════════════════════════════════════════════════
 #  Architecture Definitions
 # ═══════════════════════════════════════════════════════════════════════
@@ -273,38 +277,18 @@ def run_tket(U, n, edges, n_phys, arch_name) -> int:
     from qiskit_ibm_runtime import QiskitRuntimeService
 
     if arch_name == "iqm_garnet":
-        iqm_token = IQM_TOKEN
-        backend = IQMBackend('garnet', api_token=iqm_token)
+        backend = IQMBackend('garnet', api_token=IQM_KEY)
     else:
-        ibm_token = IBM_TOKEN
-        inst = IBM_INSTANCE
-        QiskitRuntimeService.save_account(channel="ibm_quantum_platform", token=ibm_token, instance=inst, overwrite=True)
+        QiskitRuntimeService.save_account(channel="ibm_quantum_platform", token=IBM_TOKEN, instance=IBM_INSTANCE, overwrite=True)
         backend = IBMQBackend("ibm_marrakesh")
     # 1. Get bare Qiskit circuit & convert
     qc_base = _qiskit_synthesise_bare(U, n)
     tk_circ = qiskit_to_tk(qc_base)
     backend.default_compilation_pass(optimisation_level=2).apply(tk_circ)
 
-    # cx_count = tk_circ.n_gates_of_type(OpType.CX)
-    # cx_count += tk_circ.n_gates_of_type(OpType.CZ)
-    
-    # _diagnose_bare_circuit(qc_base, edges, "tket", n, "?")
-
-    # tk_circ = qiskit_to_tk(qc_base)
-    # DecomposeBoxes().apply(tk_circ)
-
-    # # 2. Architecture
-    # arch = Architecture(_unique_edges(edges))
-
-    # # 3. Route → optimise → REBASE back to CX + single-qubit
-    # SequencePass([
-    #     DefaultMappingPass(arch),
-    #     FullPeepholeOptimise(),
-    #     AutoRebase({OpType.CX, OpType.Rz, OpType.Rx}),
-    # ]).apply(tk_circ)
-
     # 4. Count only CX (should now be the ONLY 2-qubit gate)
     cx_count = tk_circ.n_gates_of_type(OpType.CX)
+    cx_count += tk_circ.n_gates_of_type(OpType.CZ)
 
     # 5. Sanity: count ALL 2-qubit gates to confirm rebase worked
     all_2q = sum(
@@ -337,7 +321,7 @@ def run_tket(U, n, edges, n_phys, arch_name) -> int:
 #    5. Verify routing on the output tape.
 # ═══════════════════════════════════════════════════════════════════════
 
-def run_pennylane(U, n, edges, n_phys, arch_name) -> int:
+def run_pennylane(U, n, edges) -> int:
     import pennylane as qml
 
     qc_base = _qiskit_synthesise_bare(U, n)
@@ -401,91 +385,6 @@ def run_pennylane(U, n, edges, n_phys, arch_name) -> int:
     return total_cx
 
 
-# ═══════════════════════════════════════════════════════════════════════
-#  BQSKit — native synthesis (method chosen by qubit count)
-# ═══════════════════════════════════════════════════════════════════════
-
-def _bqskit_workflow(n: int, model):
-    from bqskit.passes import (
-        QSearchSynthesisPass,
-        LEAPSynthesisPass,
-        QFASTDecompositionPass,
-        ScanningGateRemovalPass,
-        SetModelPass,
-    )
-
-    if n == 3:
-        try:
-            from bqskit.passes.synthesis.pas import (
-                PermutationAwareSynthesisPass,
-            )
-            synth = PermutationAwareSynthesisPass(
-                inner_synthesis=QSearchSynthesisPass(),
-            )
-        except (ImportError, AttributeError):
-            synth = QSearchSynthesisPass()
-    elif n == 4:
-        synth = QSearchSynthesisPass()
-    elif n <= 6:
-        synth = LEAPSynthesisPass()
-    elif n == 7:
-        try:
-            synth = LEAPSynthesisPass()
-        except Exception:
-            synth = QFASTDecompositionPass()
-    else:
-        synth = QFASTDecompositionPass()
-
-    return [
-        SetModelPass(model),
-        synth,
-        ScanningGateRemovalPass(),
-    ]
-
-
-def run_all_bqskit(unitaries, qubit_range) -> dict:
-    from bqskit import Circuit, MachineModel
-    from bqskit.compiler import Compiler
-    from bqskit.ir.gates import CNOTGate, U3Gate
-
-    gate_set = {CNOTGate(), U3Gate()}
-    results: dict = {arch: {} for arch in ARCHITECTURES}
-
-    print("\n  ── BQSKit (sequential, main process) ─────────────────")
-
-    with Compiler(num_workers=1) as compiler:
-        for arch_name, arch in ARCHITECTURES.items():
-            edges = arch["edges"]
-            n_phys = arch["n_physical"]
-            model = MachineModel(
-                n_phys, _unique_edges(edges), gate_set=gate_set,
-            )
-            for n in qubit_range:
-                tag = f"  bqskit    | n={n:>2d} | {arch_name:15s}"
-                entry = {"cx_count": None, "time_s": None, "error": None}
-                U = unitaries[n]
-
-                t0 = time.perf_counter()
-                try:
-                    workflow = _bqskit_workflow(n, model)
-                    circuit = Circuit.from_unitary(U)
-                    compiled = compiler.compile(circuit, workflow)
-                    entry["cx_count"] = int(compiled.count(CNOTGate()))
-                except Exception as exc:
-                    entry["error"] = f"{type(exc).__name__}: {exc}"
-                    traceback.print_exc()
-                entry["time_s"] = round(time.perf_counter() - t0, 2)
-
-                ok = "OK" if entry["error"] is None else "FAIL"
-                print(
-                    f"  [{ok}] {tag} | "
-                    f"CX={str(entry['cx_count']):>8s} | "
-                    f"{entry['time_s']:>8.1f}s"
-                    + (f"  !! {entry['error']}" if entry["error"] else "")
-                )
-                results[arch_name][str(n)] = entry
-
-    return results
 
 
 # ═══════════════════════════════════════════════════════════════════════
@@ -563,9 +462,6 @@ def run_benchmarks() -> dict:
     with mp.Pool(processes=n_workers) as pool:
         pool_results = pool.map(_worker, pool_tasks)
 
-    # 3b. BQSKit sequential in main process
-    # bqskit_results = run_all_bqskit(unitaries, qubit_range)
-
     # 4. Merge results
     all_libs = POOL_LIBRARIES
     # all_libs = POOL_LIBRARIES + [BQSKIT_LABEL]
@@ -581,9 +477,6 @@ def run_benchmarks() -> dict:
             "error":    r["error"],
         }
 
-    # for arch_name in ARCHITECTURES:
-    #     for n_str, entry in bqskit_results[arch_name].items():
-    #         results[arch_name][BQSKIT_LABEL][n_str] = entry
 
     # 5. Save JSON
     for arch_name in ARCHITECTURES:
@@ -666,10 +559,6 @@ def plot_results(results: dict | None = None) -> None:
     )
     plt.tight_layout()
 
-    for ext in ("png", "pdf"):
-        out = f"cx_benchmark.{ext}"
-        fig.savefig(out, dpi=200, bbox_inches="tight")
-        print(f"  ✓  Saved  {out}")
 
     plt.show()
 

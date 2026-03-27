@@ -1,7 +1,6 @@
 import numpy as np
 import math
 import json
-import sys
 import argparse
 from utils import möttönen_transformation, generate_U, check_equivalence_up_to_phase, angles_from_diag, rz, rx, ry
 from architecture_aware_routing import RoutedMultiplexer
@@ -151,7 +150,7 @@ class BlockZXZ(object):
 
         eigval, eigvec = np.linalg.eig(u_1_u_2_dgr)
 
-        diag = np.diag([np.sqrt(x) for x in eigval]) # 'check for zeros
+        diag = np.diag([np.sqrt(x) for x in eigval])
         V = eigvec
         W = diag @ np.conj(V.T) @ u_2
 
@@ -229,10 +228,6 @@ class BlockZXZ(object):
             multiplexer.arch_qubits.remove(value)
             multiplexer.root = multiplexer.grey_to_arch_map[i - 2]
             multiplexer.optimal_neighborhood.pop(value)
-            # if value not in multiplexer.optimal_neighborhood.keys(): multiplexer.recompute_optimal_neighborhood()
-            # print(value)
-            # print(multiplexer.optimal_neighborhood)
-
 
             recursion_level += 1
 
@@ -322,7 +317,7 @@ class BlockZXZ(object):
 
             unitary = self.get_cnot_unitary(num_qubits, popped_gate)
 
-            unitary = np.kron(H, I) @ unitary @ np.kron(H, I) #Position of H might vary
+            unitary = np.kron(H, I) @ unitary @ np.kron(H, I)
 
             B_tilde = unitary @ B_tilde @ unitary
 
@@ -336,7 +331,6 @@ class BlockZXZ(object):
 
         gates_B = routed_multiplexer.replace_mapped_angles(transformed_angles_B, False)
 
-        #Move this inside the execute_gates() -call
         if self.swap_maps[recursion_level] != None:
             new_gates_A = deque()
             new_gates_B = deque()
@@ -392,18 +386,21 @@ if __name__ == "__main__":
     fake_marrakesh = FakeMarrakesh()
 
     parser = argparse.ArgumentParser(
-        description="Benchmark unitary synthesis CX counts.",
+        description="Architectuyre aware unitary synthesis",
     )
 
-    parser.add_argument("--qmin", type=int, default=3)
-    parser.add_argument("--qmax", type=int, default=12)
-    parser.add_argument("--arch", type=str, default=None)
+    parser.add_argument("--qmin", type=int, default=3, help="Minimum number of qubits for the synthesis")
+    parser.add_argument("--qmax", type=int, default=12, help="Maximum number of qubits for the synthesis")
+    parser.add_argument("--arch", type=str, default=None, help="Specify the quantum hardware architecture. Currently supported are 'garnet' and 'marrakesh'.")
+    parser.add_argument("--equiv", type=bool, default=False, help="Specify if you want to check the correctness of the transpiled unitary.")
     args = parser.parse_args()
 
     QUBIT_MIN = args.qmin
     QUBIT_MAX = args.qmax
     arch = args.arch
+    check_equiv = args.equiv
 
+    #Currently supported architectures are IQM Garnet and IBM Marrakesh. Add your own here if you wish to benchmark on different architectures.
     match arch:
         case "garnet":
             coupling_map = fake_garnet
@@ -412,32 +409,23 @@ if __name__ == "__main__":
         case _:
             coupling_map = None
 
-    for num_qubits in range(QUBIT_MIN, QUBIT_MAX):
+    for num_qubits in range(QUBIT_MIN, QUBIT_MAX + 1):
         U = generate_U(num_qubits)
         zxz = BlockZXZ(coupling_map=coupling_map)
         zxz.compute_decomposition(U, init = True, rightmost_unitary = True, leftmost_unitary = True)
         qc, cx_count = zxz.circuit_from_gate_queue(num_qubits)
 
         print(f"CX count: {cx_count}, num_qubits: {num_qubits}")
-        # print(zxz.swap_maps)
-        # zxz.draw_circuit(qc)
-        # print(zxz.original_multiplexer)
-        # print(zxz.routed_multiplexers[0])
-        # print(zxz.routed_multiplexers[1])
-        # print(zxz.routed_multiplexers[2])
-        # print(zxz.routed_multiplexers[3])
-        # print(zxz.swap_maps)
-        # print(zxz.swaps_per_level)
-        recon = zxz.print_circ_unitary(qc)
 
-        is_equiv, phase = check_equivalence_up_to_phase(U, recon)
+        if check_equiv:
+            recon = zxz.print_circ_unitary(qc)
+            is_equiv, phase = check_equivalence_up_to_phase(U, recon)
 
-        # if is_equiv:
-        #     recon_aligned = recon * np.conjugate(phase) # Or recon / phase
-        #     assert np.allclose(U, recon_aligned, atol=1e-5)
-        #     print("Assertion Passed: Matrices match exactly numerically.")
-        #     # print(recon_aligned)
+            if is_equiv:
+                recon_aligned = recon * np.conjugate(phase) # Or recon / phase
+                assert np.allclose(U, recon_aligned, atol=1e-5)
+                print("Assertion Passed: Matrices match exactly numerically.")
 
-   
+    
 
 

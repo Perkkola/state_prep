@@ -1,8 +1,6 @@
 import numpy as np
 from utils import orthogonal_congruence_diagonalize, get_zyz_angles, ry, rz, rx
 from collections import deque
-from qiskit import QuantumCircuit
-from qiskit.circuit.library import UnitaryGate
 from qiskit.compiler import transpile
 from qiskit_aer import Aer
 
@@ -51,7 +49,6 @@ def print_circ_unitary(qc):
 
 def project_to_SU4(U): 
     detU = np.linalg.det(U)
-    # assert detU != 0, "Matrix is not unitary!"
     if detU == 0: detU = 1e-15
     phase = detU ** (1 / 4)
     return U / phase, phase
@@ -59,7 +56,6 @@ def project_to_SU4(U):
 def project_to_SU2(U):
     detU = np.linalg.det(U)
     if detU == 0: detU = 1e-15
-    # assert detU != 0, "Matrix is not unitary!"
     return U / detU ** (1 / 2)
 
 def gamma_map(u):

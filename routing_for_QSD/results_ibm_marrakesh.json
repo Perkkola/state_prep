@@ -2,32 +2,21 @@
   "qiskit": {
     "3": {
       "cx_count": 31,
-      "time_s": 2.93,
+      "time_s": 1.6,
       "error": null
-    },
-    "4": {
-      "cx_count": 177,
-      "time_s": 3.03,
+    }
+  },
+  "tket": {
+    "3": {
+      "cx_count": 35,
+      "time_s": 7.52,
       "error": null
-    },
-    "5": {
-      "cx_count": 833,
-      "time_s": 3.23,
-      "error": null
-    },
-    "6": {
-      "cx_count": 3658,
-      "time_s": 5.1,
-      "error": null
-    },
-    "7": {
-      "cx_count": 15047,
-      "time_s": 12.23,
-      "error": null
-    },
-    "8": {
-      "cx_count": 60748,
-      "time_s": 31.21,
+    }
+  },
+  "pennylane": {
+    "3": {
+      "cx_count": 37,
+      "time_s": 3.17,
       "error": null
     }
   }

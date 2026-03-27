@@ -1,7 +1,6 @@
 from collections import deque
 from itertools import combinations
 from math import inf
-from scipy.special import binom
 
 average_pairwise_distances = []
 uc_gate_cnot_counts = []
@@ -100,26 +99,6 @@ def find_closest_cluster_exact(
             best_cost = cost
             best_cluster = list(combo)
 
-    # print(best_cluster)
-    # print(f"Pairwise dist sum: {cluster_cost(best_cluster, dist)}")
-
-    # ordered_cluster = order_cluster(best_cluster, dist)
-    # numerator = 0
-    # denominator = 0
-    # for i in range(2, len(ordered_cluster)):
-    #     subset = ordered_cluster[:i]
-    #     average_pairwise_distance = cluster_cost(subset, dist) / binom(len(subset), 2)
-    #     uc_gates_cnot_count_sum = cnot_count_for_uc_gates_per_recursion_level(n-i-1, n)
-    #     average_pairwise_distances.append(average_pairwise_distance)
-    #     uc_gate_cnot_counts.append(uc_gates_cnot_count_sum)
-    #     numerator += average_pairwise_distance * uc_gates_cnot_count_sum
-    #     denominator += uc_gates_cnot_count_sum
-
-    # d_eff = numerator / denominator
-    # print(d_eff)
-    # # print(average_pairwise_distances)
-    # # print(uc_gate_cnot_counts)
-    # # exit()
     return order_cluster(best_cluster, dist), dist
 
 
@@ -176,28 +155,12 @@ def find_closest_cluster_greedy(
         cluster.append(best_node)
         in_cluster.add(best_node)
 
-        added_cost = candidate_cost.pop(best_node)
+        candidate_cost.pop(best_node)
         # Update remaining candidates with distance to the newly added node
         for node in list(candidate_cost):
             candidate_cost[node] += dist[node].get(best_node, inf)
 
-    # ordered_cluster = order_cluster(cluster, dist)
-    # numerator = 0
-    # denominator = 0
-    # for i in range(2, len(ordered_cluster)):
-    #     subset = ordered_cluster[:i]
-    #     average_pairwise_distance = cluster_cost(subset, dist) / binom(len(subset), 2)
-    #     uc_gates_cnot_count_sum = cnot_count_for_uc_gates_per_recursion_level(n-i-1, n)
-    #     average_pairwise_distances.append(average_pairwise_distance)
-    #     uc_gate_cnot_counts.append(uc_gates_cnot_count_sum)
-    #     numerator += average_pairwise_distance * uc_gates_cnot_count_sum
-    #     denominator += uc_gates_cnot_count_sum
 
-    # d_eff = numerator / denominator
-    # print(d_eff)
-    # # print(average_pairwise_distances)
-    # # print(uc_gate_cnot_counts)
-    # # exit()
 
     return order_cluster(cluster, dist), dist
 

@@ -30,16 +30,63 @@ ibm_runtime = {
     "pennylane": [9.1, 4.3, 14.4, 104.3, 1374.3 ]
 }
 
+proposed_qiskit_garnet_ratios = []
+for proposed, qiskit in zip(iqm_qubit["proposed"], iqm_qubit["qiskit"]):
+    print(f"CNOT count overhead of proposed method compared to Qiskit on IQM Garnet: {round((qiskit - proposed ) / qiskit, 3)}")
+    proposed_qiskit_garnet_ratios.append(round((qiskit - proposed) / qiskit, 3))
+print("\n")
+
+proposed_qiskit_marrakesh_ratios = []
+for proposed, qiskit in zip(ibm_qubit["proposed"], ibm_qubit["qiskit"]):
+    print(f"CNOT count overhead of proposed method compared to Qiskit on IBM Marrakesh: {round((qiskit - proposed) / qiskit, 3)}")
+    proposed_qiskit_marrakesh_ratios.append(round((qiskit - proposed) / qiskit, 3))
+print("\n")
+
+print(f"Ratio growth factor for proposed vs Qiskit on IQM Garnet: {statistics.mean(proposed_qiskit_garnet_ratios[:])} +- {np.std(proposed_qiskit_garnet_ratios[:])}")
+print(f"Ratio growth factor for proposed vs Qiskit on  IBM Marrakesh: {statistics.mean(proposed_qiskit_marrakesh_ratios[:])} +- {np.std(proposed_qiskit_marrakesh_ratios[:])}")
+
+proposed_tket_garnet_ratios = []
+for proposed, tket in zip(iqm_qubit["proposed"], iqm_qubit["tket"]):
+    print(f"CNOT count overhead of proposed method compared to tket on IQM Garnet: {round((tket - proposed) / tket, 3)}")
+    proposed_tket_garnet_ratios.append(round((tket - proposed) / tket, 3))
+print("\n")
+
+proposed_tket_marrakesh_ratios = []
+for proposed, tket in zip(ibm_qubit["proposed"], ibm_qubit["tket"]):
+    print(f"CNOT count overhead of proposed method compared to tket on IBM Marrakesh: {round((tket - proposed) / tket, 3)}")
+    proposed_tket_marrakesh_ratios.append(round((tket - proposed) / tket, 3))
+print("\n")
+
+print(f"Ratio growth factor for proposed vs tket on IQM Garnet: {statistics.mean(proposed_tket_garnet_ratios[:])} +- {np.std(proposed_tket_garnet_ratios[:])}")
+print(f"Ratio growth factor for proposed vs tket on  IBM Marrakesh: {statistics.mean(proposed_tket_marrakesh_ratios[:])} +- {np.std(proposed_tket_marrakesh_ratios[:])}")
+
+
+proposed_pennylane_garnet_ratios = []
+for proposed, pennylane in zip(iqm_qubit["proposed"], iqm_qubit["pennylane"]):
+    print(f"CNOT count overhead of proposed method compared to pennylane on IQM Garnet: {round((pennylane - proposed) / pennylane, 3)}")
+    proposed_pennylane_garnet_ratios.append(round((pennylane- proposed ) / pennylane, 3))
+print("\n")
+
+proposed_pennylane_marrakesh_ratios = []
+for proposed, pennylane in zip(ibm_qubit["proposed"], ibm_qubit["pennylane"]):
+    print(f"CNOT count overhead of proposed method compared to pennylane on IBM Marrakesh: {round((pennylane- proposed ) / pennylane, 3)}")
+    proposed_pennylane_marrakesh_ratios.append(round((pennylane- proposed ) / pennylane, 3))
+print("\n")
+
+print(f"Ratio growth factor for proposed vs pennylane on IQM Garnet: {statistics.mean(proposed_pennylane_garnet_ratios[:])} +- {np.std(proposed_pennylane_garnet_ratios[:])}")
+print(f"Ratio growth factor for proposed vs pennylane on  IBM Marrakesh: {statistics.mean(proposed_pennylane_marrakesh_ratios[:])} +- {np.std(proposed_pennylane_marrakesh_ratios[:])}")
+# exit()
+
 garnet_ratios = []
 for theoretical, proposed in zip(theoretical_cnot_count, iqm_qubit["proposed"]):
-    print(f"CNOT count overhead of proposed method compared to theoretical on IQM Garnet: {(proposed ) / theoretical}")
-    garnet_ratios.append((proposed ) / theoretical)
+    print(f"CNOT count overhead of proposed method compared to theoretical on IQM Garnet: {round((proposed - theoretical ) / theoretical, 3)}")
+    garnet_ratios.append(round((proposed - theoretical ) / theoretical, 3))
 print("\n")
 
 marrakesh_ratios = []
 for theoretical, proposed in zip(theoretical_cnot_count, ibm_qubit["proposed"]):
-    print(f"CNOT count overhead of proposed method compared to theoretical on IBM Marrakesh: {(proposed ) / theoretical}")
-    marrakesh_ratios.append((proposed ) / theoretical)
+    print(f"CNOT count overhead of proposed method compared to theoretical on IBM Marrakesh: {round((proposed- theoretical ) / theoretical, 3)}")
+    marrakesh_ratios.append(round((proposed - theoretical ) / theoretical, 3))
 
 print(f"Ratio growth factor for IQM Garnet: {statistics.mean(garnet_ratios[:])} +- {np.std(garnet_ratios[:])}")
 print(f"Ratio growth factor for IBM Marrakesh: {statistics.mean(marrakesh_ratios[:])} +- {np.std(marrakesh_ratios[:])}")
